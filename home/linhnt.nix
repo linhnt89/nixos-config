@@ -17,6 +17,9 @@
 
   programs.zsh.enable = true;
 
+  # Bootstrap browser
+  programs.firefox.enable = true;
+
   # Bootstrap terminal. We can replace this later.
   programs.kitty.enable = true;
 
