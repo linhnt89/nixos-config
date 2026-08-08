@@ -47,8 +47,36 @@
     };
   };
 
+  # Run clipboard history as a user service
+  systemd.user.services.cliphist = {
+    Unit = {
+      Description = "Wayland clipboard history";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+
+    Service = {
+      ExecStart =
+        "${pkgs.wl-clipboard}/bin/wl-paste --watch ${pkgs.cliphist}/bin/cliphist store";
+
+      Restart = "on-failure";
+    };
+
+    Install = {
+      WantedBy = [ "graphical-session.target" ];
+    };
+  };
+
   home.packages = [
     pkgs.libnotify
+    
+    # Clipboard
+    pkgs.wl-clipboard
+    pkgs.cliphist
+
+    # Screenshots
+    pkgs.grim
+    pkgs.slurp
   ];
 
   # Keep Hyprland's native Lua config as a normal file for now.
