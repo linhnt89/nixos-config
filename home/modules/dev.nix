@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, pkgsUnstable, ... }:
 
 {
   #
@@ -46,10 +46,18 @@
   };
 
   #
-  # General development utilities
+  # AI development tools
   #
 
   home.packages = [
+    # Pi moves significantly faster than the NixOS stable
+    # package set, so keep only Pi on nixpkgs-unstable.
+    pkgsUnstable.pi-coding-agent
+
+    #
+    # General development utilities
+    #
+
     # HTTP/download tools
     pkgs.curl
     pkgs.wget
