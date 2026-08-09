@@ -1,0 +1,10 @@
+default:
+    @just --list
+
+# Validate the project's flake.
+check:
+    nix flake check
+
+# Update flake inputs and flake.lock.
+update:
+    nix flake update

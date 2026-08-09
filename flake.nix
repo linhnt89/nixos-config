@@ -35,5 +35,24 @@
             }
           ];
         };
+
+      templates.dev = {
+        path = ./templates/dev;
+        description = "Minimal Nix development environment with direnv";
+
+        welcomeText = ''
+          # Development environment
+
+          Enter the directory and run:
+
+          ```console
+          direnv allow
+          ```
+
+          Add project-specific tools and runtimes to `flake.nix`.
+
+          Commit both `flake.nix` and the generated `flake.lock`.
+        '';
+      };
     };
 }

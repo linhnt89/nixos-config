@@ -1,0 +1,8 @@
+# Nix / direnv
+.direnv/
+result
+result-*
+
+# Local environment files
+.env
+.env.local

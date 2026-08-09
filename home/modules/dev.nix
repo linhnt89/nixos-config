@@ -33,6 +33,19 @@
   };
 
   #
+  # Project environments
+  #
+
+  programs.direnv = {
+    enable = true;
+    enableZshIntegration = true;
+
+    # Use nix-direnv's persistent/cached implementation
+    # for Nix development environments.
+    nix-direnv.enable = true;
+  };
+
+  #
   # General development utilities
   #
 
