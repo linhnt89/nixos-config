@@ -1,5 +1,5 @@
 {
-  description = "NixOS configuration for my mini PC";
+  description = "NixOS configuration for MetaCube";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
@@ -11,14 +11,18 @@
   };
 
   outputs =
-    { nixpkgs, home-manager, ... }:
     {
-      nixosConfigurations.minipc =
+      nixpkgs,
+      home-manager,
+      ...
+    }:
+    {
+      nixosConfigurations.metacube =
         nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
 
           modules = [
-            ./hosts/minipc/configuration.nix
+            ./hosts/metacube/configuration.nix
 
             home-manager.nixosModules.home-manager
 

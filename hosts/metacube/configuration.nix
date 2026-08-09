@@ -27,7 +27,7 @@ in
   # Networking
   #
 
-  networking.hostName = "minipc";
+  networking.hostName = "metacube";
   networking.networkmanager.enable = true;
 
   #
@@ -122,10 +122,6 @@ in
   # SSH
   #
 
-  # Run one ssh-agent for the user session.
-  #
-  # Private keys themselves stay in ~/.ssh and are NOT
-  # managed through the Nix store.
   programs.ssh.startAgent = true;
 
   #
@@ -163,7 +159,9 @@ in
 
   programs.hyprland = {
     enable = true;
+
     withUWSM = true;
+
     xwayland.enable = true;
   };
 
