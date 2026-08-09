@@ -3,13 +3,13 @@
 let
   # Session started by greetd after successful authentication.
   #
-  # Keep Hyprland under UWSM so graphical-session.target,
-  # XDG autostart and our user services continue working
-  # the same way they do now.
+  # UWSM loads Hyprland's desktop entry rather than executing
+  # the Hyprland binary directly. The desktop entry then invokes
+  # start-hyprland, which is the supported startup path.
   hyprlandSession = pkgs.writeShellScript "start-hyprland-uwsm" ''
     exec ${pkgs.uwsm}/bin/uwsm \
-      start -F -- \
-      /run/current-system/sw/bin/Hyprland
+      start -e -D Hyprland \
+      hyprland.desktop
   '';
 in
 {
@@ -169,8 +169,7 @@ in
   services.greetd = {
     enable = true;
 
-    # Adjust greetd's systemd service for a terminal-based
-    # greeter so boot messages do not corrupt the interface.
+    # Prevent boot messages from interfering with the TUI greeter.
     useTextGreeter = true;
 
     settings = {
