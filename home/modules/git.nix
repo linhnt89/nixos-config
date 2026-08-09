@@ -4,10 +4,18 @@
   #
   # SSH agent environment
   #
+  # NixOS starts ssh-agent and creates its socket at:
+  #
+  #   $XDG_RUNTIME_DIR/ssh-agent
+  #
+  # UWSM imports this file when starting the graphical
+  # session, so GUI apps and systemd user services inherit
+  # SSH_AUTH_SOCK too.
+  #
 
-  home.sessionVariables = {
-    SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/ssh-agent";
-  };
+  xdg.configFile."uwsm/env.d/10-ssh-agent".text = ''
+    export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent"
+  '';
 
   #
   # Git
