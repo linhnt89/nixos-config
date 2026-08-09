@@ -4,6 +4,7 @@
   imports = [
     ./modules/shell.nix
     ./modules/git.nix
+    ./modules/dev.nix
     ./modules/appearance.nix
     ./modules/apps.nix
     ./modules/services.nix
