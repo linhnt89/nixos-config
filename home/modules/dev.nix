@@ -1,6 +1,10 @@
 { pkgs, pkgsUnstable, ... }:
 
 {
+  imports = [
+    ./pi.nix
+  ];
+
   #
   # GitHub CLI
   #

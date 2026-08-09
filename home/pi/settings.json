@@ -1,0 +1,27 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-luna",
+  "defaultThinkingLevel": "xhigh",
+
+  "hideThinkingBlock": true,
+  "quietStartup": true,
+  "collapseChangelog": true,
+
+  "steeringMode": "all",
+  "followUpMode": "all",
+
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000
+  },
+
+  "enabledModels": [
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-5.6-terra",
+    "openai-codex/gpt-5.6-sol",
+    "opencode-go/glm-5.2",
+    "opencode-go/deepseek-v4-flash",
+    "opencode-go/kimi-k3"
+  ]
+}
