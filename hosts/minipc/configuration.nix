@@ -1,11 +1,10 @@
 { pkgs, ... }:
 
 let
-  # Session started by greetd after successful authentication.
   #
-  # UWSM loads Hyprland's desktop entry rather than executing
-  # the Hyprland binary directly. The desktop entry then invokes
-  # start-hyprland, which is the supported startup path.
+  # Hyprland session
+  #
+
   hyprlandSession = pkgs.writeShellScript "start-hyprland-uwsm" ''
     exec ${pkgs.uwsm}/bin/uwsm \
       start -e -D Hyprland \
@@ -156,7 +155,6 @@ in
   programs.hyprland = {
     enable = true;
 
-    # Keep Hyprland managed by UWSM.
     withUWSM = true;
 
     xwayland.enable = true;
@@ -169,7 +167,6 @@ in
   services.greetd = {
     enable = true;
 
-    # Prevent boot messages from interfering with the TUI greeter.
     useTextGreeter = true;
 
     settings = {
@@ -191,6 +188,12 @@ in
   #
 
   programs.zsh.enable = true;
+
+  # Make completion definitions from system packages
+  # available to Zsh.
+  environment.pathsToLink = [
+    "/share/zsh"
+  ];
 
   #
   # User

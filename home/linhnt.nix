@@ -75,6 +75,12 @@ in
   home.homeDirectory = "/home/linhnt";
 
   #
+  # XDG base directories
+  #
+
+  xdg.enable = true;
+
+  #
   # Git
   #
 
@@ -131,7 +137,102 @@ in
   # Shell
   #
 
-  programs.zsh.enable = true;
+  programs.zsh = {
+    enable = true;
+
+    # Standard tab completion.
+    enableCompletion = true;
+
+    # Show a suggestion from command history while typing.
+    autosuggestion.enable = true;
+
+    # Highlight valid/invalid commands and shell syntax.
+    syntaxHighlighting.enable = true;
+
+    history = {
+      size = 50000;
+      save = 50000;
+
+      # Share history between open terminal sessions.
+      share = true;
+
+      # Keep history useful rather than full of duplicates.
+      ignoreDups = true;
+      ignoreAllDups = true;
+      expireDuplicatesFirst = true;
+
+      # Save timestamps.
+      extended = true;
+
+      # A command beginning with a space is not stored.
+      ignoreSpace = true;
+    };
+  };
+
+  #
+  # Prompt
+  #
+
+  programs.starship = {
+    enable = true;
+    enableZshIntegration = true;
+
+    settings = {
+      # Keep successive prompts compact.
+      add_newline = false;
+
+      # Don't allow a slow prompt module to block indefinitely.
+      command_timeout = 1000;
+    };
+  };
+
+  #
+  # Fuzzy finder
+  #
+
+  programs.fzf = {
+    enable = true;
+    enableZshIntegration = true;
+
+    # Files displayed by Ctrl-T.
+    fileWidgetCommand =
+      "${pkgs.fd}/bin/fd "
+      + "--type f "
+      + "--hidden "
+      + "--exclude .git";
+
+    # Directories displayed by Alt-C.
+    changeDirWidgetCommand =
+      "${pkgs.fd}/bin/fd "
+      + "--type d "
+      + "--hidden "
+      + "--exclude .git";
+
+    defaultOptions = [
+      "--height=40%"
+      "--layout=reverse"
+      "--border"
+    ];
+  };
+
+  #
+  # Modern CLI viewers
+  #
+
+  programs.bat = {
+    enable = true;
+
+    config = {
+      pager = "less -FR";
+    };
+  };
+
+  programs.eza = {
+    enable = true;
+
+    # Deliberately do not replace ls/ll/la with aliases.
+    enableZshIntegration = false;
+  };
 
   #
   # Terminal
@@ -241,30 +342,74 @@ in
   #
 
   home.packages = [
-    # Our own session menu
+    #
+    # Session
+    #
+
     powerMenu
 
+    #
+    # CLI utilities
+    #
+
+    # Recursive text search.
+    pkgs.ripgrep
+
+    # File/directory search.
+    pkgs.fd
+
+    # JSON processor.
+    pkgs.jq
+
+    # Directory tree viewer.
+    pkgs.tree
+
+    # Archive utilities.
+    pkgs.zip
+    pkgs.unzip
+
+    #
     # Notifications
+    #
+
     pkgs.libnotify
 
+    #
     # Clipboard
+    #
+
     pkgs.wl-clipboard
     pkgs.cliphist
 
+    #
     # Screenshots
+    #
+
     pkgs.grim
     pkgs.slurp
 
+    #
     # Audio control
+    #
+
     pkgs.pavucontrol
 
+    #
     # NetworkManager connection editor
+    #
+
     pkgs.networkmanagerapplet
 
-    # Archive manager
+    #
+    # Archive GUI
+    #
+
     pkgs.xarchiver
 
+    #
     # Image viewer
+    #
+
     pkgs.imv
   ];
 
