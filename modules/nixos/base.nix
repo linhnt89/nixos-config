@@ -75,4 +75,13 @@
     pkgs.git
     pkgs.vim
   ];
+
+  #
+  # Setup Garbage Collector
+  #
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 14d";
+  };
 }
