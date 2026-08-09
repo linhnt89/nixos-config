@@ -113,55 +113,464 @@ in
   services.hyprpolkitagent.enable = true;
 
   #
-  # Notifications
+  # Notifications / control center
+  #
+  # SwayNC replaces Mako as the notification daemon.
   #
 
-  services.mako = {
+  services.swaync = {
     enable = true;
 
     settings = {
-      anchor = "top-right";
+      #
+      # Window placement
+      #
 
-      font = "${theme.fonts.sans} 11";
+      positionX = "right";
+      positionY = "top";
 
-      background-color = "#${c.surface}f2";
-      text-color = "#${c.text}ff";
+      "control-center-positionX" = "right";
+      "control-center-positionY" = "top";
 
-      border-color = "#${c.border}ff";
-      border-size = 1;
-      border-radius = theme.radius.panel;
+      layer = "overlay";
+      "control-center-layer" = "overlay";
 
-      width = 360;
+      "layer-shell" = true;
+      "layer-shell-cover-screen" = true;
 
-      margin = 12;
-      padding = 12;
+      #
+      # Keep the panel aligned with our floating Waybar.
+      #
+      # Waybar:
+      #   top margin  = 8 px
+      #   height      = 38 px
+      #
+      # 8 + 38 + 8 = 54 px
+      #
 
-      default-timeout = 5000;
+      "control-center-margin-top" = 54;
+      "control-center-margin-right" = 10;
+      "control-center-margin-bottom" = 10;
+      "control-center-margin-left" = 10;
 
-      icons = true;
+      #
+      # Control center geometry
+      #
+
+      "fit-to-screen" = false;
+
+      "control-center-width" = 420;
+      "control-center-height" = 620;
+
+      #
+      # Use the MetaCube's main display explicitly.
+      #
+
+      "control-center-preferred-output" = "HDMI-A-1";
+      "notification-window-preferred-output" = "HDMI-A-1";
+
+      "notification-window-width" = 420;
+
+      #
+      # Notification behavior
+      #
+
+      timeout = 6;
+      "timeout-low" = 4;
+
+      # Critical notifications remain until dismissed.
+      "timeout-critical" = 0;
+
+      "relative-timestamps" = true;
+      "notification-grouping" = true;
+
+      "notification-2fa-action" = true;
+      "notification-inline-replies" = false;
+
+      "hide-on-action" = true;
+      "hide-on-clear" = false;
+
+      "keyboard-shortcuts" = true;
+
+      #
+      # Keep animations quick.
+      #
+
+      "transition-time" = 150;
+
+      #
+      # Prevent external GTK themes from changing SwayNC.
+      #
+
+      "ignore-gtk-theme" = true;
+      cssPriority = "user";
+
+      #
+      # Control center layout
+      #
+      # Keep this intentionally small for the first version.
+      #
+
+      widgets = [
+        "title"
+        "dnd"
+        "volume"
+        "notifications"
+      ];
+
+      "widget-config" = {
+        title = {
+          text = "Notifications";
+
+          "clear-all-button" = true;
+          "button-text" = "Clear";
+        };
+
+        dnd = {
+          text = "Do not disturb";
+        };
+
+        volume = {
+          label = "";
+
+          "show-per-app" = false;
+        };
+
+        notifications = {
+          vexpand = true;
+        };
+      };
     };
-  };
 
-  #
-  # Explicit systemd service because D-Bus activation did not
-  # work correctly in our UWSM session.
-  #
+    #
+    # Theme
+    #
+    # SwayNC supplies the structure and widgets.
+    # We override its visual language to match Waybar,
+    # Fuzzel, Kitty, and the rest of our desktop.
+    #
 
-  systemd.user.services.mako = {
-    Unit = {
-      Description = "Mako notification daemon";
-      After = [ "graphical-session.target" ];
-      PartOf = [ "graphical-session.target" ];
-    };
+    style = ''
+      /*
+       * Shared SwayNC variables
+       */
 
-    Service = {
-      ExecStart = "${pkgs.mako}/bin/mako";
-      Restart = "on-failure";
-    };
+      :root {
+        --cc-bg: #${c.background};
 
-    Install = {
-      WantedBy = [ "graphical-session.target" ];
-    };
+        /*
+         * SwayNC expects this variable as RGB components
+         * because its default CSS uses rgba(var(--noti-bg), ...).
+         *
+         * 1c1f26 = rgb(28, 31, 38)
+         */
+
+        --noti-bg: 28, 31, 38;
+        --noti-bg-alpha: 1;
+
+        --noti-border-color: #${c.border};
+
+        --noti-bg-darker: #${c.background};
+        --noti-bg-hover: #${c.surfaceAlt};
+        --noti-bg-focus: #${c.surfaceHover};
+
+        --noti-close-bg: #${c.surfaceAlt};
+        --noti-close-bg-hover: #${c.surfaceHover};
+
+        --text-color: #${c.text};
+        --text-color-disabled: #${c.textDim};
+
+        --bg-selected: #${c.accent};
+
+        --border: 1px solid #${c.border};
+        --border-radius: ${toString theme.radius.panel}px;
+
+        --notification-shadow: none;
+
+        --font-size-body: 13px;
+        --font-size-summary: 13px;
+
+        --notification-icon-size: 48px;
+      }
+
+      /*
+       * Typography
+       */
+
+      * {
+        font-family:
+          "${theme.fonts.sans}",
+          "${theme.fonts.mono}",
+          sans-serif;
+      }
+
+      /*
+       * Transparent layer-shell windows
+       */
+
+      notificationwindow,
+      blankwindow,
+      .blank-window,
+      .floating-notifications {
+        background: transparent;
+      }
+
+      /*
+       * Floating notification placement
+       *
+       * Keep popups below the floating Waybar.
+       */
+
+      .floating-notifications {
+        padding-top: 54px;
+        padding-right: 10px;
+      }
+
+      /*
+       * Notification cards
+       */
+
+      .notification-row {
+        outline: none;
+        background: transparent;
+      }
+
+      .notification {
+        background: #${c.surface};
+
+        border: 1px solid #${c.border};
+        border-radius: ${toString theme.radius.panel}px;
+
+        box-shadow: none;
+      }
+
+      .notification.critical {
+        border-color: #${c.danger};
+      }
+
+      .notification-default-action {
+        color: #${c.text};
+
+        background: transparent;
+
+        border: none;
+        border-radius: ${toString theme.radius.panel}px;
+      }
+
+      .notification-default-action:hover {
+        background: #${c.surfaceAlt};
+      }
+
+      .notification-content .summary {
+        color: #${c.text};
+
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .notification-content .body {
+        color: #${c.textMuted};
+
+        font-size: 13px;
+      }
+
+      .notification-content .time {
+        color: #${c.textDim};
+
+        font-size: 11px;
+      }
+
+      /*
+       * Close button
+       */
+
+      .close-button {
+        min-width: 24px;
+        min-height: 24px;
+
+        padding: 0;
+
+        color: #${c.textMuted};
+        background: #${c.surfaceAlt};
+
+        border: none;
+        border-radius: 999px;
+
+        box-shadow: none;
+      }
+
+      .close-button:hover {
+        color: #${c.text};
+        background: #${c.surfaceHover};
+      }
+
+      /*
+       * Alternative notification actions
+       */
+
+      .notification-action > button {
+        color: #${c.text};
+
+        background: #${c.surfaceAlt};
+
+        border: none;
+        border-radius: ${toString theme.radius.control}px;
+
+        box-shadow: none;
+      }
+
+      .notification-action > button:hover {
+        background: #${c.surfaceHover};
+      }
+
+      /*
+       * Control center
+       */
+
+      .control-center {
+        color: #${c.text};
+        background: #${c.background};
+
+        border: 1px solid #${c.border};
+        border-radius: ${toString theme.radius.panel}px;
+
+        box-shadow: none;
+      }
+
+      .control-center-list {
+        background: transparent;
+      }
+
+      .control-center-list-placeholder {
+        color: #${c.textDim};
+      }
+
+      /*
+       * Shared widget geometry
+       */
+
+      .widget {
+        margin: 6px 10px;
+        padding: 10px 12px;
+
+        border-radius: ${toString theme.radius.panel}px;
+      }
+
+      /*
+       * Header
+       */
+
+      .widget-title {
+        margin-top: 10px;
+        margin-bottom: 2px;
+
+        background: transparent;
+      }
+
+      .widget-title > label {
+        color: #${c.text};
+
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .widget-title > button {
+        padding: 5px 10px;
+
+        color: #${c.textMuted};
+        background: #${c.surfaceAlt};
+
+        border: 1px solid #${c.border};
+        border-radius: ${toString theme.radius.control}px;
+
+        box-shadow: none;
+      }
+
+      .widget-title > button:hover {
+        color: #${c.text};
+        background: #${c.surfaceHover};
+      }
+
+      /*
+       * Do Not Disturb card
+       */
+
+      .widget-dnd {
+        background: #${c.surface};
+
+        border: 1px solid #${c.border};
+      }
+
+      .widget-dnd label {
+        color: #${c.text};
+      }
+
+      .widget-dnd switch {
+        background: #${c.surfaceAlt};
+
+        border: 1px solid #${c.border};
+        border-radius: 999px;
+
+        box-shadow: none;
+      }
+
+      .widget-dnd switch:checked {
+        background: #${c.accent};
+      }
+
+      .widget-dnd switch slider {
+        background: #${c.text};
+
+        border-radius: 999px;
+
+        box-shadow: none;
+      }
+
+      /*
+       * Volume card
+       */
+
+      .widget-volume {
+        color: #${c.text};
+        background: #${c.surface};
+
+        border: 1px solid #${c.border};
+      }
+
+      .widget-volume label {
+        color: #${c.textMuted};
+
+        font-family: "${theme.fonts.mono}";
+      }
+
+      .widget-volume scale trough {
+        min-height: 6px;
+
+        background: #${c.surfaceAlt};
+
+        border-radius: 999px;
+      }
+
+      .widget-volume scale highlight {
+        min-height: 6px;
+
+        background: #${c.accent};
+
+        border-radius: 999px;
+      }
+
+      .widget-volume scale slider {
+        min-width: 14px;
+        min-height: 14px;
+
+        background: #${c.text};
+
+        border: none;
+        border-radius: 999px;
+
+        box-shadow: none;
+      }
+    '';
   };
 
   #

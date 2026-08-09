@@ -6,13 +6,27 @@ let
 in
 {
   #
+  # Desktop appearance preference
+  #
+  # Use the freedesktop / GNOME color-scheme preference
+  # instead of Home Manager's gtk.colorScheme option.
+  #
+  # gtk.colorScheme currently produces a GTK4 setting that
+  # GTK4/libadwaita rejects on Home Manager 26.05.
+  #
+
+  dconf.settings = {
+    "org/gnome/desktop/interface" = {
+      "color-scheme" = "prefer-dark";
+    };
+  };
+
+  #
   # GTK
   #
 
   gtk = {
     enable = true;
-
-    colorScheme = "dark";
 
     font = {
       name = theme.fonts.sans;
@@ -23,6 +37,17 @@ in
     iconTheme = {
       name = "Adwaita";
       package = pkgs.adwaita-icon-theme;
+    };
+
+    #
+    # GTK3 still understands this preference directly.
+    #
+    # Do not put it into GTK4 settings.ini because
+    # libadwaita does not use that mechanism.
+    #
+
+    gtk3.extraConfig = {
+      "gtk-application-prefer-dark-theme" = true;
     };
   };
 

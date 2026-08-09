@@ -6,6 +6,8 @@ let
   c = theme.colors;
   r = theme.radius;
 
+  swayncClient = "${pkgs.swaynotificationcenter}/bin/swaync-client";
+
   #
   # MetaCube hardware status
   #
@@ -156,7 +158,7 @@ in
 
         modules-right = [
           "group/status"
-          "custom/power"
+          "group/actions"
         ];
 
         #
@@ -205,6 +207,19 @@ in
             "pulseaudio"
             "network"
             "bluetooth"
+          ];
+        };
+
+        #
+        # Actions island
+        #
+
+        "group/actions" = {
+          orientation = "horizontal";
+
+          modules = [
+            "custom/notification"
+            "custom/power"
           ];
         };
 
@@ -309,6 +324,46 @@ in
         };
 
         #
+        # Notifications / control center
+        #
+        # Left click:
+        #   open / close control center
+        #
+        # Right click:
+        #   toggle Do Not Disturb
+        #
+
+        "custom/notification" = {
+          tooltip = true;
+
+          format = "{icon}";
+
+          format-icons = {
+            notification = "";
+            none = "";
+
+            "dnd-notification" = "";
+            "dnd-none" = "";
+
+            "inhibited-notification" = "";
+            "inhibited-none" = "";
+
+            "dnd-inhibited-notification" = "";
+            "dnd-inhibited-none" = "";
+          };
+
+          "return-type" = "json";
+
+          exec = "${swayncClient} -swb";
+
+          on-click = "${swayncClient} -t -sw";
+
+          on-click-right = "${swayncClient} -d -sw";
+
+          escape = true;
+        };
+
+        #
         # Power menu
         #
 
@@ -352,7 +407,7 @@ in
       #workspaces,
       #clock,
       #status,
-      #custom-power {
+      #actions {
         background: #${c.surface};
 
         border: 1px solid #${c.border};
@@ -417,14 +472,6 @@ in
       #status {
         padding: 0 4px;
       }
-
-      /*
-       * Use one font for the complete status area.
-       *
-       * This prevents mixed Inter / Nerd Font metrics from
-       * making icons and numerical values look vertically
-       * misaligned.
-       */
 
       #cpu,
       #custom-metacube,
@@ -504,22 +551,36 @@ in
       }
 
       /*
-       * Power
+       * Actions island
        */
 
-      #custom-power {
-        min-width: 34px;
+      #actions {
+        padding: 0 4px;
+      }
 
-        padding: 0 2px;
+      #custom-notification,
+      #custom-power {
+        min-width: 28px;
+
+        margin: 3px 0;
+        padding: 0 5px;
+
+        border-radius: ${toString r.control}px;
 
         font-family: "${theme.fonts.mono}";
 
         color: #${c.textMuted};
+        background: transparent;
+      }
+
+      #custom-notification:hover,
+      #custom-power:hover {
+        color: #${c.text};
+        background: #${c.surfaceAlt};
       }
 
       #custom-power:hover {
         color: #${c.danger};
-        background: #${c.surfaceAlt};
       }
 
       /*
