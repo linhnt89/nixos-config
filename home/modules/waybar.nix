@@ -5,6 +5,127 @@ let
 
   c = theme.colors;
   r = theme.radius;
+
+  #
+  # MetaCube hardware status
+  #
+  # Reads directly from kernel sysfs interfaces.
+  #
+  # No lm_sensors process is required at runtime.
+  #
+
+  metacubeStatus = pkgs.writeShellScript "metacube-waybar-status" ''
+    cpu_temp_raw=""
+    soc_power_raw=""
+    gpu_busy=""
+    profile="unknown"
+
+    #
+    # Find sensors by hwmon name rather than hwmon number.
+    #
+    # hwmon numbers can change between boots.
+    #
+
+    for hwmon in /sys/class/hwmon/hwmon*; do
+      [ -r "$hwmon/name" ] || continue
+
+      IFS= read -r hwmon_name < "$hwmon/name"
+
+      case "$hwmon_name" in
+        k10temp)
+          if [ -r "$hwmon/temp1_input" ]; then
+            IFS= read -r cpu_temp_raw < "$hwmon/temp1_input"
+          fi
+          ;;
+
+        amdgpu)
+          if [ -r "$hwmon/power1_input" ]; then
+            IFS= read -r soc_power_raw < "$hwmon/power1_input"
+          elif [ -r "$hwmon/power1_average" ]; then
+            IFS= read -r soc_power_raw < "$hwmon/power1_average"
+          fi
+          ;;
+      esac
+    done
+
+    #
+    # GPU utilization
+    #
+
+    for card in /sys/class/drm/card[0-9]*; do
+      busy_file="$card/device/gpu_busy_percent"
+
+      if [ -r "$busy_file" ]; then
+        IFS= read -r gpu_busy < "$busy_file"
+        break
+      fi
+    done
+
+    #
+    # Firmware platform profile
+    #
+
+    if [ -r /sys/firmware/acpi/platform_profile ]; then
+      IFS= read -r profile \
+        < /sys/firmware/acpi/platform_profile
+    fi
+
+    #
+    # Convert millidegrees Celsius to degrees Celsius.
+    #
+
+    temp_c="?"
+
+    if [[ "$cpu_temp_raw" =~ ^[0-9]+$ ]]; then
+      temp_c=$((cpu_temp_raw / 1000))
+    fi
+
+    #
+    # Convert microwatts to watts.
+    #
+
+    power_w="?"
+
+    if [[ "$soc_power_raw" =~ ^[0-9]+$ ]]; then
+      power_w=$(((soc_power_raw + 500000) / 1000000))
+    fi
+
+    #
+    # GPU value fallback.
+    #
+
+    if ! [[ "$gpu_busy" =~ ^[0-9]+$ ]]; then
+      gpu_busy="?"
+    fi
+
+    #
+    # Temperature state for Waybar CSS.
+    #
+
+    status_class="normal"
+
+    if [[ "$temp_c" =~ ^[0-9]+$ ]]; then
+      if ((temp_c >= 85)); then
+        status_class="critical"
+      elif ((temp_c >= 75)); then
+        status_class="warning"
+      fi
+    fi
+
+    #
+    # Waybar JSON output.
+    #
+
+    printf \
+      '{"text":"%s°  %sW","tooltip":"CPU temperature: %s°C\\nSoC power: %s W\\nGPU busy: %s%%\\nPlatform profile: %s","class":"%s"}\n' \
+      "$temp_c" \
+      "$power_w" \
+      "$temp_c" \
+      "$power_w" \
+      "$gpu_busy" \
+      "$profile" \
+      "$status_class"
+  '';
 in
 {
   programs.waybar = {
@@ -81,6 +202,7 @@ in
 
           modules = [
             "cpu"
+            "custom/metacube"
             "pulseaudio"
             "network"
             "bluetooth"
@@ -88,13 +210,13 @@ in
         };
 
         #
-        # CPU
+        # CPU utilization
         #
 
         cpu = {
           interval = 10;
 
-          format = " {usage}%";
+          format = "  {usage}%";
 
           tooltip-format =
             "CPU usage: {usage}%\n" + "Load: {load1}\n" + "Average frequency: {avg_frequency} GHz";
@@ -103,6 +225,22 @@ in
             warning = 70;
             critical = 90;
           };
+        };
+
+        #
+        # MetaCube hardware status
+        #
+
+        "custom/metacube" = {
+          exec = "${metacubeStatus}";
+
+          interval = 10;
+
+          return-type = "json";
+
+          format = "{}";
+
+          tooltip = true;
         };
 
         #
@@ -291,6 +429,7 @@ in
       }
 
       #cpu,
+      #custom-metacube,
       #pulseaudio,
       #network,
       #bluetooth {
@@ -304,6 +443,7 @@ in
       }
 
       #cpu:hover,
+      #custom-metacube:hover,
       #pulseaudio:hover,
       #network:hover,
       #bluetooth:hover {
@@ -312,7 +452,7 @@ in
       }
 
       /*
-       * CPU states
+       * CPU utilization states
        */
 
       #cpu.warning {
@@ -320,6 +460,18 @@ in
       }
 
       #cpu.critical {
+        color: #${c.danger};
+      }
+
+      /*
+       * MetaCube thermal states
+       */
+
+      #custom-metacube.warning {
+        color: #${c.warning};
+      }
+
+      #custom-metacube.critical {
         color: #${c.danger};
       }
 
