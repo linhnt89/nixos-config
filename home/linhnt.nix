@@ -1,35 +1,68 @@
 { pkgs, ... }:
 
+let
+  wallpaper =
+    pkgs.nixos-artwork.wallpapers.nineish-dark-gray.gnomeFilePath;
+in
 {
   home.username = "linhnt";
   home.homeDirectory = "/home/linhnt";
 
+  #
+  # Programs
+  #
+
   programs.git = {
     enable = true;
-	
+
     settings = {
       user = {
+        # Keep your existing values here.
         name = "Linh Nguyen";
-	email = "linhtramnguyen@gmail.com";
+        email = "linhtramnguyen@gmail.com";
       };
     };
   };
 
   programs.zsh.enable = true;
 
-  # Bootstrap browser
-  programs.firefox.enable = true;
-
-  # Bootstrap terminal. We can replace this later.
   programs.kitty.enable = true;
 
-  # Bootstrap application launcher
+  programs.firefox.enable = true;
+
   programs.fuzzel.enable = true;
-  
-  # Authentication
+
+  #
+  # Packages without dedicated configuration modules
+  #
+
+  home.packages = [
+    # Notifications
+    pkgs.libnotify
+
+    # Clipboard
+    pkgs.wl-clipboard
+    pkgs.cliphist
+
+    # Screenshots
+    pkgs.grim
+    pkgs.slurp
+  ];
+
+  #
+  # Polkit authentication agent
+  #
+
   services.hyprpolkitagent.enable = true;
-  # Notification
+
+  #
+  # Notifications
+  #
+
   services.mako.enable = true;
+
+  # Explicit systemd service because D-Bus activation did not
+  # work correctly in our UWSM session.
   systemd.user.services.mako = {
     Unit = {
       Description = "Mako notification daemon";
@@ -47,7 +80,10 @@
     };
   };
 
-  # Run clipboard history as a user service
+  #
+  # Clipboard history
+  #
+
   systemd.user.services.cliphist = {
     Unit = {
       Description = "Wayland clipboard history";
@@ -57,7 +93,8 @@
 
     Service = {
       ExecStart =
-        "${pkgs.wl-clipboard}/bin/wl-paste --watch ${pkgs.cliphist}/bin/cliphist store";
+        "${pkgs.wl-clipboard}/bin/wl-paste --watch "
+        + "${pkgs.cliphist}/bin/cliphist store";
 
       Restart = "on-failure";
     };
@@ -67,23 +104,10 @@
     };
   };
 
-  home.packages = [
-    pkgs.libnotify
-    
-    # Clipboard
-    pkgs.wl-clipboard
-    pkgs.cliphist
+  #
+  # Screen locking
+  #
 
-    # Screenshots
-    pkgs.grim
-    pkgs.slurp
-  ];
-
-  # Keep Hyprland's native Lua config as a normal file for now.
-  xdg.configFile."hypr/hyprland.lua".source =
-    ./hyprland.lua;
-
-  # Hyprlock config
   programs.hyprlock = {
     enable = true;
 
@@ -103,6 +127,7 @@
       "input-field" = [
         {
           monitor = "";
+
           size = "260, 52";
           position = "0, -60";
 
@@ -125,7 +150,15 @@
     };
   };
 
-  # Hypridle
+  #
+  # Idle management
+  #
+  # Lock only for now.
+  #
+  # We intentionally do NOT use DPMS here yet because of the
+  # display/power-management problem we encountered.
+  #
+
   services.hypridle = {
     enable = true;
 
@@ -133,31 +166,197 @@
       general = {
         lock_cmd = "pidof hyprlock || hyprlock";
         before_sleep_cmd = "loginctl lock-session";
-
-        after_sleep_cmd =
-          "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })'";
       };
 
       listener = [
         {
-          # Lock after 10 minutes.
           timeout = 600;
           on-timeout = "loginctl lock-session";
         }
-
-        #{
-          # Turn displays off 30 seconds after locking.
-         # timeout = 630;
-
-          #on-timeout =
-           # "hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\" })'";
-
-          #on-resume =
-           # "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })'";
-        #}
       ];
     };
   };
+
+  #
+  # Wallpaper
+  #
+
+  services.hyprpaper = {
+    enable = true;
+
+    settings = {
+      splash = false;
+
+      wallpaper = [
+        {
+          monitor = "";
+          path = wallpaper;
+          fit_mode = "cover";
+        }
+      ];
+    };
+  };
+
+  #
+  # Waybar
+  #
+
+  programs.waybar = {
+    enable = true;
+
+    systemd.enable = true;
+
+    settings = {
+      mainBar = {
+        layer = "top";
+        position = "top";
+        height = 32;
+        spacing = 8;
+
+        modules-left = [
+          "hyprland/workspaces"
+        ];
+
+        modules-center = [
+          "clock"
+        ];
+
+        modules-right = [
+          "pulseaudio"
+          "network"
+          "bluetooth"
+          "tray"
+        ];
+
+        "hyprland/workspaces" = {
+          format = "{name}";
+
+          persistent-workspaces = {
+            "*" = 5;
+          };
+        };
+
+        clock = {
+          interval = 60;
+
+          format = "{:%H:%M}";
+          tooltip-format = "{:%A, %d %B %Y}";
+        };
+
+        pulseaudio = {
+          format = "VOL {volume}%";
+          format-muted = "MUTED";
+
+          on-click =
+            "${pkgs.wireplumber}/bin/wpctl "
+            + "set-mute @DEFAULT_AUDIO_SINK@ toggle";
+
+          on-scroll-up =
+            "${pkgs.wireplumber}/bin/wpctl "
+            + "set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+";
+
+          on-scroll-down =
+            "${pkgs.wireplumber}/bin/wpctl "
+            + "set-volume @DEFAULT_AUDIO_SINK@ 5%-";
+        };
+
+        network = {
+          format-wifi =
+            "Wi-Fi {essid} {signalStrength}%";
+
+          format-ethernet =
+            "LAN {ifname}";
+
+          format-disconnected =
+            "Offline";
+
+          tooltip-format-wifi =
+            "{essid}\n{ifname}: {ipaddr}";
+
+          tooltip-format-ethernet =
+            "{ifname}: {ipaddr}";
+
+          tooltip-format-disconnected =
+            "Network disconnected";
+        };
+
+        bluetooth = {
+          format = "BT {status}";
+          format-disabled = "BT off";
+          format-connected = "BT {num_connections}";
+
+          tooltip-format-connected =
+            "{controller_alias}\n{device_enumerate}";
+
+          tooltip-format-enumerate-connected =
+            "{device_alias}";
+        };
+
+        tray = {
+          spacing = 8;
+        };
+      };
+    };
+
+    style = ''
+      * {
+        border: none;
+        border-radius: 0;
+        font-family: sans-serif;
+        font-size: 13px;
+        min-height: 0;
+      }
+
+      window#waybar {
+        background: rgba(20, 22, 28, 0.92);
+        color: #e6e6e6;
+      }
+
+      #workspaces button {
+        padding: 0 9px;
+        color: #a8a8a8;
+        background: transparent;
+      }
+
+      #workspaces button.active {
+        color: #ffffff;
+        background: #3b4252;
+      }
+
+      #workspaces button.urgent {
+        background: #8f3f3f;
+        color: #ffffff;
+      }
+
+      #clock,
+      #pulseaudio,
+      #network,
+      #bluetooth,
+      #tray {
+        padding: 0 10px;
+      }
+
+      #pulseaudio.muted {
+        color: #888888;
+      }
+
+      #network.disconnected,
+      #bluetooth.disabled {
+        color: #888888;
+      }
+    '';
+  };
+
+  #
+  # Hyprland native Lua configuration
+  #
+
+  xdg.configFile."hypr/hyprland.lua".source =
+    ./hyprland.lua;
+
+  #
+  # Home Manager compatibility version
+  #
 
   home.stateVersion = "26.05";
 }
