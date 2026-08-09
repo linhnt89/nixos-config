@@ -17,7 +17,7 @@ in
 
     settings = {
       user = {
-        # Keep your actual existing values here.
+        # Keep your actual values here.
         name = "Linh Nguyen";
         email = "linhtramnguyen@gmail.com";
       };
@@ -31,6 +31,9 @@ in
   programs.firefox.enable = true;
 
   programs.fuzzel.enable = true;
+
+  # PDF/document viewer.
+  programs.zathura.enable = true;
 
   #
   # Packages without dedicated configuration modules
@@ -51,11 +54,33 @@ in
     # Audio control
     pkgs.pavucontrol
 
-    # NetworkManager GTK connection editor.
-    # We install the package but do not run nm-applet,
-    # because Waybar already shows network status.
+    # NetworkManager GTK connection editor
     pkgs.networkmanagerapplet
+
+    # Archive manager used by Thunar's archive plugin
+    pkgs.xarchiver
+
+    # Image viewer
+    pkgs.imv
   ];
+
+  #
+  # Default applications
+  #
+  # Home Manager reads the .desktop files from these packages
+  # and establishes their supported MIME associations as defaults.
+  #
+
+  xdg.mimeApps = {
+    enable = true;
+
+    defaultApplicationPackages = [
+      pkgs.thunar
+      pkgs.xarchiver
+      pkgs.imv
+      pkgs.zathura
+    ];
+  };
 
   #
   # Polkit authentication agent
@@ -162,8 +187,7 @@ in
   # Idle management
   #
   # Lock only for now.
-  # DPMS remains disabled until we investigate the earlier
-  # display/power-management issue more carefully.
+  # DPMS remains disabled.
   #
 
   services.hypridle = {
@@ -254,11 +278,9 @@ in
           format = "VOL {volume}%";
           format-muted = "MUTED";
 
-          # Open full audio mixer.
           on-click =
             "${pkgs.pavucontrol}/bin/pavucontrol";
 
-          # Right-click toggles mute.
           on-click-right =
             "${pkgs.wireplumber}/bin/wpctl "
             + "set-mute @DEFAULT_AUDIO_SINK@ toggle";
@@ -291,7 +313,6 @@ in
           tooltip-format-disconnected =
             "Network disconnected";
 
-          # Open NetworkManager's GTK connection editor.
           on-click =
             "${pkgs.networkmanagerapplet}/bin/nm-connection-editor";
         };
@@ -307,8 +328,6 @@ in
           tooltip-format-enumerate-connected =
             "{device_alias}";
 
-          # Blueman itself is installed by the NixOS
-          # services.blueman module.
           on-click = "blueman-manager";
         };
 

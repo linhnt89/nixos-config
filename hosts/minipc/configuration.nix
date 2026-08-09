@@ -57,8 +57,6 @@
   #
 
   hardware.bluetooth.enable = true;
-
-  # GTK Bluetooth manager plus its D-Bus/systemd integration.
   services.blueman.enable = true;
 
   #
@@ -67,7 +65,7 @@
 
   security.rtkit.enable = true;
 
-  # Required for hyprlock password authentication.
+  # Required for hyprlock authentication.
   security.pam.services.hyprlock = {};
 
   #
@@ -82,6 +80,30 @@
 
     pulse.enable = true;
   };
+
+  #
+  # File management
+  #
+
+  # NixOS provides proper Thunar integration including
+  # D-Bus, systemd and xfconf support.
+  programs.thunar = {
+    enable = true;
+
+    plugins = [
+      pkgs.thunar-archive-plugin
+      pkgs.thunar-volman
+    ];
+  };
+
+  # Virtual filesystem support:
+  # Trash, removable devices, MTP and other GIO locations.
+  #
+  # This automatically enables services.udisks2.
+  services.gvfs.enable = true;
+
+  # Thumbnail generation used by Thunar.
+  services.tumbler.enable = true;
 
   #
   # Hyprland
