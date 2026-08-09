@@ -1,5 +1,17 @@
 { pkgs, ... }:
 
+let
+  # Session started by greetd after successful authentication.
+  #
+  # Keep Hyprland under UWSM so graphical-session.target,
+  # XDG autostart and our user services continue working
+  # the same way they do now.
+  hyprlandSession = pkgs.writeShellScript "start-hyprland-uwsm" ''
+    exec ${pkgs.uwsm}/bin/uwsm \
+      start -F -- \
+      /run/current-system/sw/bin/Hyprland
+  '';
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -103,7 +115,7 @@
   security.pam.services.hyprlock = {};
 
   #
-  # dconf / GTK settings infrastructure
+  # dconf / GTK infrastructure
   #
 
   programs.dconf.enable = true;
@@ -143,8 +155,36 @@
 
   programs.hyprland = {
     enable = true;
+
+    # Keep Hyprland managed by UWSM.
     withUWSM = true;
+
     xwayland.enable = true;
+  };
+
+  #
+  # Login manager
+  #
+
+  services.greetd = {
+    enable = true;
+
+    # Adjust greetd's systemd service for a terminal-based
+    # greeter so boot messages do not corrupt the interface.
+    useTextGreeter = true;
+
+    settings = {
+      default_session = {
+        command =
+          "${pkgs.tuigreet}/bin/tuigreet "
+          + "--time "
+          + "--remember "
+          + "--asterisks "
+          + "--cmd ${hyprlandSession}";
+
+        user = "greeter";
+      };
+    };
   };
 
   #
