@@ -15,6 +15,430 @@ let
   wallpaper = pkgs.nixos-artwork.wallpapers.nineish-dark-gray.gnomeFilePath;
 
   #
+  # Wi-Fi quick setting
+  #
+
+  wifiToggle = pkgs.writeShellApplication {
+    name = "metacube-wifi-toggle";
+
+    runtimeInputs = [
+      pkgs.networkmanager
+    ];
+
+    text = ''
+      set -u
+
+      if [ "''${SWAYNC_TOGGLE_STATE:-false}" = "true" ]; then
+        nmcli radio wifi on
+      else
+        nmcli radio wifi off
+      fi
+    '';
+  };
+
+  wifiState = pkgs.writeShellApplication {
+    name = "metacube-wifi-state";
+
+    runtimeInputs = [
+      pkgs.networkmanager
+    ];
+
+    text = ''
+      if [ "$(nmcli radio wifi)" = "enabled" ]; then
+        echo true
+      else
+        echo false
+      fi
+    '';
+  };
+
+  #
+  # Bluetooth quick setting
+  #
+  # A Bluetooth controller can be disabled at two levels:
+  #
+  # 1. kernel RFKill
+  # 2. BlueZ controller power
+  #
+  # When the controller is RFKill blocked, clear that state
+  # first through the privileged NixOS pkexec wrapper.
+  #
+  # Do not RFKill the controller again when simply turning
+  # Bluetooth off. This allows later on/off operations to
+  # stay unprivileged in the normal case.
+  #
+
+  bluetoothToggle = pkgs.writeShellApplication {
+    name = "metacube-bluetooth-toggle";
+
+    runtimeInputs = [
+      pkgs.bluez
+      pkgs.gnugrep
+      pkgs.libnotify
+    ];
+
+    text = ''
+      set -u
+
+      requested_state="''${SWAYNC_TOGGLE_STATE:-false}"
+
+      is_powered() {
+        bluetoothctl show 2>/dev/null \
+          | grep -q 'Powered: yes'
+      }
+
+      is_soft_blocked() {
+        for rfkill in /sys/class/rfkill/rfkill*; do
+          [ -r "$rfkill/type" ] || continue
+          [ -r "$rfkill/soft" ] || continue
+
+          IFS= read -r type < "$rfkill/type"
+
+          [ "$type" = "bluetooth" ] || continue
+
+          IFS= read -r soft < "$rfkill/soft"
+
+          if [ "$soft" = "1" ]; then
+            return 0
+          fi
+        done
+
+        return 1
+      }
+
+      if [ "$requested_state" = "true" ]; then
+        #
+        # RFKill must be cleared before BlueZ can control
+        # the adapter.
+        #
+
+        if is_soft_blocked; then
+          if ! /run/wrappers/bin/pkexec \
+            ${pkgs.util-linux}/bin/rfkill \
+            unblock bluetooth
+          then
+            notify-send \
+              "Bluetooth" \
+              "Bluetooth could not be unblocked."
+
+            exit 1
+          fi
+
+          #
+          # On this MetaCube the controller can become
+          # Powered=yes automatically after RFKill is
+          # cleared. Give the kernel and BlueZ a moment
+          # to settle before issuing another command.
+          #
+
+          for _ in 1 2 3 4 5; do
+            if is_powered; then
+              exit 0
+            fi
+
+            sleep 0.4
+          done
+        fi
+
+        #
+        # If RFKill did not automatically power the
+        # controller, ask BlueZ explicitly.
+        #
+        # Retry briefly because BlueZ can report Busy
+        # immediately after an RFKill transition.
+        #
+
+        if is_powered; then
+          exit 0
+        fi
+
+        for _ in 1 2 3 4 5; do
+          if bluetoothctl power on >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          sleep 0.5
+        done
+
+        notify-send \
+          "Bluetooth" \
+          "Bluetooth could not be powered on."
+
+        exit 1
+      else
+        #
+        # Leave RFKill unblocked.
+        #
+        # Only ask BlueZ to turn the controller off.
+        #
+
+        if is_powered; then
+          if ! bluetoothctl power off; then
+            notify-send \
+              "Bluetooth" \
+              "Bluetooth could not be powered off."
+
+            exit 1
+          fi
+        fi
+      fi
+    '';
+  };
+
+  bluetoothState = pkgs.writeShellApplication {
+    name = "metacube-bluetooth-state";
+
+    runtimeInputs = [
+      pkgs.bluez
+      pkgs.gnugrep
+    ];
+
+    text = ''
+      #
+      # RFKill blocked always means effectively off.
+      #
+
+      for rfkill in /sys/class/rfkill/rfkill*; do
+        [ -r "$rfkill/type" ] || continue
+        [ -r "$rfkill/soft" ] || continue
+
+        IFS= read -r type < "$rfkill/type"
+
+        [ "$type" = "bluetooth" ] || continue
+
+        IFS= read -r soft < "$rfkill/soft"
+
+        if [ "$soft" = "1" ]; then
+          echo false
+          exit 0
+        fi
+      done
+
+      if bluetoothctl show \
+        | grep -q 'Powered: yes'
+      then
+        echo true
+      else
+        echo false
+      fi
+    '';
+  };
+
+  #
+  # Privileged platform-profile setter
+  #
+
+  platformProfileSetter = pkgs.writeShellScript "metacube-set-platform-profile" ''
+    set -eu
+
+    profile_file="/sys/firmware/acpi/platform_profile"
+    choices_file="/sys/firmware/acpi/platform_profile_choices"
+
+    if [ "$#" -ne 1 ]; then
+      echo \
+        "Usage: metacube-set-platform-profile PROFILE" \
+        >&2
+
+      exit 2
+    fi
+
+    profile="$1"
+
+    case "$profile" in
+      low-power|balanced|performance)
+        ;;
+      *)
+        echo "Unsupported profile: $profile" >&2
+        exit 2
+        ;;
+    esac
+
+    if [ ! -r "$choices_file" ]; then
+      echo \
+        "Platform profile choices are unavailable." \
+        >&2
+
+      exit 1
+    fi
+
+    choices="$(
+      ${pkgs.coreutils}/bin/cat "$choices_file"
+    )"
+
+    case " $choices " in
+      *" $profile "*)
+        ;;
+      *)
+        echo \
+          "Profile is not offered by firmware: $profile" \
+          >&2
+
+        exit 2
+        ;;
+    esac
+
+    printf '%s\n' "$profile" > "$profile_file"
+  '';
+
+  #
+  # Platform-profile chooser
+  #
+
+  platformProfileMenu = pkgs.writeShellApplication {
+    name = "metacube-profile-menu";
+
+    runtimeInputs = [
+      pkgs.fuzzel
+      pkgs.libnotify
+      pkgs.swaynotificationcenter
+    ];
+
+    text = ''
+            set -u
+
+            profile_file="/sys/firmware/acpi/platform_profile"
+            choices_file="/sys/firmware/acpi/platform_profile_choices"
+
+            if [ ! -r "$profile_file" ] || [ ! -r "$choices_file" ]; then
+              notify-send \
+                "Power profile" \
+                "Platform profiles are not available on this system."
+
+              exit 1
+            fi
+
+            current="$(cat "$profile_file")"
+            choices="$(cat "$choices_file")"
+
+            #
+            # Close SwayNC before Fuzzel opens.
+            #
+
+            swaync-client -t >/dev/null 2>&1 || true
+
+            sleep 0.1
+
+            menu=""
+
+            for profile in $choices; do
+              case "$profile" in
+                low-power)
+                  label="Low power"
+                  ;;
+
+                balanced)
+                  label="Balanced"
+                  ;;
+
+                performance)
+                  label="Performance"
+                  ;;
+
+                *)
+                  label="$profile"
+                  ;;
+              esac
+
+              if [ "$profile" = "$current" ]; then
+                label="$label  •"
+              fi
+
+              if [ -n "$menu" ]; then
+                menu="$menu
+      "
+              fi
+
+              menu="$menu$label"
+            done
+
+            choice="$(
+              printf '%s\n' "$menu" |
+                fuzzel \
+                  --dmenu \
+                  --prompt="Power profile > "
+            )" || exit 0
+
+            case "$choice" in
+              "Low power"|"Low power  •")
+                profile="low-power"
+                ;;
+
+              "Balanced"|"Balanced  •")
+                profile="balanced"
+                ;;
+
+              "Performance"|"Performance  •")
+                profile="performance"
+                ;;
+
+              *)
+                exit 0
+                ;;
+            esac
+
+            #
+            # No action is necessary when the selected profile
+            # is already active.
+            #
+
+            if [ "$profile" = "$current" ]; then
+              exit 0
+            fi
+
+            #
+            # IMPORTANT:
+            #
+            # Use the NixOS setuid pkexec wrapper explicitly.
+            #
+            # Do not use plain "pkexec" here. A Nix package in
+            # PATH can shadow /run/wrappers/bin/pkexec with the
+            # non-setuid store binary.
+            #
+
+            if /run/wrappers/bin/pkexec \
+              ${pkgs.bash}/bin/bash \
+              ${platformProfileSetter} \
+              "$profile"
+            then
+              case "$profile" in
+                low-power)
+                  name="Low power"
+                  ;;
+
+                balanced)
+                  name="Balanced"
+                  ;;
+
+                performance)
+                  name="Performance"
+                  ;;
+
+                *)
+                  name="$profile"
+                  ;;
+              esac
+
+              notify-send \
+                "Power profile" \
+                "Switched to $name."
+            else
+              #
+              # Normal urgency is intentional.
+              #
+              # Critical notifications are configured to remain
+              # visible until dismissed.
+              #
+
+              notify-send \
+                "Power profile" \
+                "The profile could not be changed."
+
+              exit 1
+            fi
+    '';
+  };
+
+  #
   # Session / power menu
   #
 
@@ -92,11 +516,6 @@ in
   #
   # XDG autostart overrides
   #
-  # Network status and controls are provided by Waybar.
-  #
-  # Keep NetworkManager and nm-connection-editor available,
-  # but do not run the redundant nm-applet tray application.
-  #
 
   xdg.configFile."autostart/nm-applet.desktop".text = ''
     [Desktop Entry]
@@ -114,14 +533,6 @@ in
 
   #
   # Notifications / control center
-  #
-  # SwayNC provides:
-  #
-  # - notification popups
-  # - notification history
-  # - Do Not Disturb
-  # - MPRIS media controls
-  # - volume control
   #
 
   services.swaync = {
@@ -146,12 +557,6 @@ in
 
       #
       # Keep the panel aligned with our floating Waybar.
-      #
-      # Waybar:
-      #   top margin  = 8 px
-      #   height      = 38 px
-      #
-      # 8 + 38 + 8 = 54 px
       #
 
       "control-center-margin-top" = 54;
@@ -184,7 +589,11 @@ in
       timeout = 6;
       "timeout-low" = 4;
 
-      # Critical notifications remain until dismissed.
+      #
+      # Critical notifications intentionally remain until
+      # dismissed.
+      #
+
       "timeout-critical" = 0;
 
       "relative-timestamps" = true;
@@ -218,6 +627,7 @@ in
       widgets = [
         "title"
         "dnd"
+        "buttons-grid"
         "mpris"
         "volume"
         "notifications"
@@ -236,11 +646,48 @@ in
         };
 
         #
-        # Media controls
+        # Quick settings
         #
-        # Hide completely when there is no useful player
-        # metadata. Album art appears only when supplied by
-        # the application.
+        # update-command runs when the control center is
+        # opened, so the visual state is resynchronized
+        # with the real device state.
+        #
+
+        "buttons-grid" = {
+          "buttons-per-row" = 3;
+
+          actions = [
+            {
+              label = "Wi-Fi";
+              type = "toggle";
+              active = false;
+
+              command = "${wifiToggle}/bin/metacube-wifi-toggle";
+
+              "update-command" = "${wifiState}/bin/metacube-wifi-state";
+            }
+
+            {
+              label = "Bluetooth";
+              type = "toggle";
+              active = false;
+
+              command = "${bluetoothToggle}/bin/metacube-bluetooth-toggle";
+
+              "update-command" = "${bluetoothState}/bin/metacube-bluetooth-state";
+            }
+
+            {
+              label = "Profile";
+              type = "normal";
+
+              command = "${platformProfileMenu}/bin/metacube-profile-menu";
+            }
+          ];
+        };
+
+        #
+        # Media controls
         #
 
         mpris = {
@@ -250,6 +697,10 @@ in
 
           "loop-carousel" = false;
         };
+
+        #
+        # Volume
+        #
 
         volume = {
           label = "";
@@ -274,14 +725,6 @@ in
 
       :root {
         --cc-bg: #${c.background};
-
-        /*
-         * SwayNC expects this variable as RGB components
-         * because its default CSS uses
-         * rgba(var(--noti-bg), ...).
-         *
-         * 1c1f26 = rgb(28, 31, 38)
-         */
 
         --noti-bg: 28, 31, 38;
         --noti-bg-alpha: 1;
@@ -309,13 +752,6 @@ in
         --font-size-summary: 13px;
 
         --notification-icon-size: 48px;
-
-        /*
-         * MPRIS album art.
-         *
-         * SwayNC 0.12 uses this CSS variable instead of
-         * the old image-size config setting.
-         */
 
         --mpris-album-art-icon-size: 72px;
       }
@@ -430,7 +866,7 @@ in
       }
 
       /*
-       * Alternative notification actions
+       * Notification actions
        */
 
       .notification-action > button {
@@ -517,7 +953,7 @@ in
       }
 
       /*
-       * Do Not Disturb card
+       * Do Not Disturb
        */
 
       .widget-dnd {
@@ -552,10 +988,69 @@ in
       }
 
       /*
+       * Quick settings
+       */
+
+      .widget-buttons-grid {
+        margin: 6px 10px;
+        padding: 0;
+
+        background: transparent;
+      }
+
+      .widget-buttons-grid
+      > flowbox
+      > flowboxchild
+      > button {
+        min-height: 38px;
+
+        margin: 0 3px;
+        padding: 0 10px;
+
+        color: #${c.textMuted};
+        background: #${c.surface};
+
+        border: 1px solid #${c.border};
+        border-radius: ${toString theme.radius.control}px;
+
+        box-shadow: none;
+      }
+
+      .widget-buttons-grid
+      > flowbox
+      > flowboxchild:first-child
+      > button {
+        margin-left: 0;
+      }
+
+      .widget-buttons-grid
+      > flowbox
+      > flowboxchild:last-child
+      > button {
+        margin-right: 0;
+      }
+
+      .widget-buttons-grid
+      > flowbox
+      > flowboxchild
+      > button:hover {
+        color: #${c.text};
+
+        background: #${c.surfaceAlt};
+      }
+
+      .widget-buttons-grid
+      > flowbox
+      > flowboxchild
+      > button.toggle:checked {
+        color: #${c.background};
+        background: #${c.accent};
+
+        border-color: #${c.accent};
+      }
+
+      /*
        * MPRIS media card
-       *
-       * Keep this fully opaque. This avoids album-art
-       * background effects and keeps rendering cheap.
        */
 
       .widget-mpris {
@@ -580,11 +1075,6 @@ in
         box-shadow: none;
       }
 
-      /*
-       * Do not use the album artwork as a translucent
-       * background layer.
-       */
-
       .mpris-overlay {
         background: transparent;
       }
@@ -607,10 +1097,6 @@ in
 
         font-size: 12px;
       }
-
-      /*
-       * Previous / play / next controls
-       */
 
       .widget-mpris button {
         margin: 2px;
@@ -640,7 +1126,7 @@ in
       }
 
       /*
-       * Volume card
+       * Volume
        */
 
       .widget-volume {
