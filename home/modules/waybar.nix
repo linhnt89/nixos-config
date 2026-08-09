@@ -156,7 +156,6 @@ in
 
         modules-right = [
           "group/status"
-          "tray"
           "custom/power"
         ];
 
@@ -216,7 +215,7 @@ in
         cpu = {
           interval = 10;
 
-          format = "  {usage}%";
+          format = " {usage}%";
 
           tooltip-format =
             "CPU usage: {usage}%\n" + "Load: {load1}\n" + "Average frequency: {avg_frequency} GHz";
@@ -249,11 +248,11 @@ in
 
         pulseaudio = {
           format = "{icon} {volume}%";
-          format-muted = "󰝟";
+          format-muted = "";
 
           format-icons = {
             headphone = "";
-            headset = "󰋎";
+            headset = "";
 
             default = [
               ""
@@ -279,8 +278,8 @@ in
 
         network = {
           format-wifi = " {signalStrength}%";
-          format-ethernet = "󰈀";
-          format-disconnected = "󰖪";
+          format-ethernet = "";
+          format-disconnected = "";
 
           tooltip-format-wifi = "{essid}\n" + "{ifname}: {ipaddr}\n" + "Signal: {signalStrength}%";
 
@@ -297,7 +296,7 @@ in
 
         bluetooth = {
           format = "";
-          format-disabled = "󰂲";
+          format-disabled = "";
           format-connected = " {num_connections}";
 
           tooltip-format = "{controller_alias}";
@@ -307,14 +306,6 @@ in
           tooltip-format-enumerate-connected = "{device_alias}";
 
           on-click = "blueman-manager";
-        };
-
-        #
-        # Tray
-        #
-
-        tray = {
-          spacing = 8;
         };
 
         #
@@ -361,7 +352,6 @@ in
       #workspaces,
       #clock,
       #status,
-      #tray,
       #custom-power {
         background: #${c.surface};
 
@@ -428,6 +418,14 @@ in
         padding: 0 4px;
       }
 
+      /*
+       * Use one font for the complete status area.
+       *
+       * This prevents mixed Inter / Nerd Font metrics from
+       * making icons and numerical values look vertically
+       * misaligned.
+       */
+
       #cpu,
       #custom-metacube,
       #pulseaudio,
@@ -437,6 +435,8 @@ in
         padding: 0 9px;
 
         border-radius: ${toString r.control}px;
+
+        font-family: "${theme.fonts.mono}";
 
         color: #${c.textMuted};
         background: transparent;
@@ -504,14 +504,6 @@ in
       }
 
       /*
-       * System tray
-       */
-
-      #tray {
-        padding: 0 11px;
-      }
-
-      /*
        * Power
        */
 
@@ -519,6 +511,8 @@ in
         min-width: 34px;
 
         padding: 0 2px;
+
+        font-family: "${theme.fonts.mono}";
 
         color: #${c.textMuted};
       }

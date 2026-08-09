@@ -90,6 +90,23 @@ in
   ];
 
   #
+  # XDG autostart overrides
+  #
+  # Network status and controls are provided by Waybar.
+  #
+  # Keep NetworkManager and nm-connection-editor available,
+  # but do not run the redundant nm-applet tray application.
+  #
+
+  xdg.configFile."autostart/nm-applet.desktop".text = ''
+    [Desktop Entry]
+    Type=Application
+    Name=NetworkManager Applet
+    Exec=nm-applet
+    Hidden=true
+  '';
+
+  #
   # Polkit authentication agent
   #
 
