@@ -110,7 +110,6 @@ in
 
   security.rtkit.enable = true;
 
-  # Required for hyprlock authentication.
   security.pam.services.hyprlock = {};
 
   #
@@ -118,6 +117,16 @@ in
   #
 
   programs.dconf.enable = true;
+
+  #
+  # SSH
+  #
+
+  # Run one ssh-agent for the user session.
+  #
+  # Private keys themselves stay in ~/.ssh and are NOT
+  # managed through the Nix store.
+  programs.ssh.startAgent = true;
 
   #
   # Audio
@@ -154,9 +163,7 @@ in
 
   programs.hyprland = {
     enable = true;
-
     withUWSM = true;
-
     xwayland.enable = true;
   };
 
@@ -189,8 +196,6 @@ in
 
   programs.zsh.enable = true;
 
-  # Make completion definitions from system packages
-  # available to Zsh.
   environment.pathsToLink = [
     "/share/zsh"
   ];

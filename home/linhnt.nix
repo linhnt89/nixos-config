@@ -75,10 +75,19 @@ in
   home.homeDirectory = "/home/linhnt";
 
   #
-  # XDG base directories
+  # XDG
   #
 
   xdg.enable = true;
+
+  #
+  # Session environment
+  #
+
+  # NixOS's ssh-agent listens here.
+  home.sessionVariables = {
+    SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/ssh-agent";
+  };
 
   #
   # Git
@@ -87,11 +96,90 @@ in
   programs.git = {
     enable = true;
 
+    # Use the full Git build for SSH remotes.
+    package = pkgs.gitFull;
+
     settings = {
       user = {
         # Keep your actual values here.
         name = "Linh Nguyen";
         email = "linhtramnguyen@gmail.com";
+      };
+
+      # New repositories start on "main".
+      init.defaultBranch = "main";
+
+      # Delete remote-tracking refs that no longer exist
+      # on the remote whenever we fetch.
+      fetch.prune = true;
+
+      # Never let "git pull" silently create a merge commit.
+      # Diverged history requires an explicit decision.
+      pull.ff = "only";
+
+      # The first push of a new branch automatically
+      # configures its upstream.
+      push = {
+        default = "simple";
+        autoSetupRemote = true;
+      };
+
+      # When explicitly rebasing, temporarily stash local
+      # modifications and restore them afterwards.
+      rebase.autoStash = true;
+
+      # Better diff behavior for source code.
+      diff.algorithm = "histogram";
+
+      # Show the common ancestor as well as ours/theirs
+      # when resolving conflicts.
+      merge.conflictStyle = "zdiff3";
+    };
+  };
+
+  #
+  # Git diff viewer
+  #
+
+  programs.delta = {
+    enable = true;
+
+    # Configure Git to use Delta automatically.
+    enableGitIntegration = true;
+
+    options = {
+      line-numbers = true;
+      navigate = true;
+      side-by-side = false;
+    };
+  };
+
+  #
+  # SSH client
+  #
+
+  programs.ssh = {
+    enable = true;
+
+    # Avoid Home Manager's legacy implicit SSH defaults.
+    enableDefaultConfig = false;
+
+    settings = {
+      "*" = {
+        ForwardAgent = false;
+        AddKeysToAgent = "no";
+      };
+
+      "github.com" = {
+        HostName = "github.com";
+        User = "git";
+
+        IdentityFile = "~/.ssh/id_ed25519";
+        IdentitiesOnly = true;
+
+        # Once this key is successfully used, remember it
+        # in the running ssh-agent.
+        AddKeysToAgent = "yes";
       };
     };
   };
@@ -140,31 +228,22 @@ in
   programs.zsh = {
     enable = true;
 
-    # Standard tab completion.
     enableCompletion = true;
 
-    # Show a suggestion from command history while typing.
     autosuggestion.enable = true;
-
-    # Highlight valid/invalid commands and shell syntax.
     syntaxHighlighting.enable = true;
 
     history = {
       size = 50000;
       save = 50000;
 
-      # Share history between open terminal sessions.
       share = true;
 
-      # Keep history useful rather than full of duplicates.
       ignoreDups = true;
       ignoreAllDups = true;
       expireDuplicatesFirst = true;
 
-      # Save timestamps.
       extended = true;
-
-      # A command beginning with a space is not stored.
       ignoreSpace = true;
     };
   };
@@ -178,10 +257,7 @@ in
     enableZshIntegration = true;
 
     settings = {
-      # Keep successive prompts compact.
       add_newline = false;
-
-      # Don't allow a slow prompt module to block indefinitely.
       command_timeout = 1000;
     };
   };
@@ -194,14 +270,12 @@ in
     enable = true;
     enableZshIntegration = true;
 
-    # Files displayed by Ctrl-T.
     fileWidgetCommand =
       "${pkgs.fd}/bin/fd "
       + "--type f "
       + "--hidden "
       + "--exclude .git";
 
-    # Directories displayed by Alt-C.
     changeDirWidgetCommand =
       "${pkgs.fd}/bin/fd "
       + "--type d "
@@ -230,7 +304,7 @@ in
   programs.eza = {
     enable = true;
 
-    # Deliberately do not replace ls/ll/la with aliases.
+    # Keep traditional ls untouched.
     enableZshIntegration = false;
   };
 
@@ -352,19 +426,11 @@ in
     # CLI utilities
     #
 
-    # Recursive text search.
     pkgs.ripgrep
-
-    # File/directory search.
     pkgs.fd
-
-    # JSON processor.
     pkgs.jq
-
-    # Directory tree viewer.
     pkgs.tree
 
-    # Archive utilities.
     pkgs.zip
     pkgs.unzip
 
@@ -554,9 +620,6 @@ in
 
   #
   # Idle management
-  #
-  # Lock only.
-  # DPMS remains disabled.
   #
 
   services.hypridle = {
