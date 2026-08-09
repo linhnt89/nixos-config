@@ -7,14 +7,12 @@
 -- MONITOR
 ----------------
 
--- Fallback rule for any connected monitor.
---
--- "preferred" uses the display's preferred resolution and refresh rate.
--- We will configure the monitor explicitly later if necessary.
+-- ViewSonic VX2758-2K-PRO
+-- Native resolution at high refresh rate.
 hl.monitor({
-  output = "",
-  mode = "preferred",
-  position = "auto",
+  output = "HDMI-A-1",
+  mode = "2560x1440@143.98",
+  position = "0x0",
   scale = 1,
 })
 
@@ -89,7 +87,6 @@ hl.config({
 -- ANIMATIONS
 ----------------
 
--- Short, restrained animation curve.
 hl.curve(
   "quickEase",
   {
@@ -157,10 +154,8 @@ hl.config({
   input = {
     kb_layout = "us",
 
-    -- Focus follows the pointer.
     follow_mouse = 1,
 
-    -- No acceleration adjustment.
     sensitivity = 0,
   },
 })
@@ -333,7 +328,7 @@ for i = 1, 10 do
   )
 end
 
--- Scroll through existing workspaces.
+-- Scroll through workspaces.
 hl.bind(
   mainMod .. " + mouse_down",
   hl.dsp.focus({
@@ -399,13 +394,13 @@ hl.bind(
 -- SCREENSHOTS
 ----------------
 
--- Region
+-- Region screenshot
 hl.bind(
   "Print",
   hl.dsp.exec_cmd(screenshotRegion)
 )
 
--- Full desktop
+-- Full desktop screenshot
 hl.bind(
   "SHIFT + Print",
   hl.dsp.exec_cmd(screenshotFull)
