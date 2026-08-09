@@ -29,6 +29,7 @@ grim "$file" &&
 wl-copy < "$file" &&
 notify-send "Screenshot saved" "$file"
 ]]
+local lockSession = "loginctl lock-session"
 
 -- Open terminal.
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd(terminal))
@@ -60,4 +61,10 @@ hl.bind(
 hl.bind(
   "SHIFT + Print",
   hl.dsp.exec_cmd(screenshotFull)
+)
+
+-- Lock session
+hl.bind(
+  mainMod .. " + L",
+  hl.dsp.exec_cmd(lockSession)
 )

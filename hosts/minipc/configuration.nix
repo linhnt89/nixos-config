@@ -38,6 +38,7 @@
   hardware.bluetooth.enable = true;
 
   # Audio
+  security.pam.services.hyprlock = {};
   security.rtkit.enable = true;
 
   services.pipewire = {
