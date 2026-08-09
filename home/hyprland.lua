@@ -8,7 +8,6 @@
 ----------------
 
 -- ViewSonic VX2758-2K-PRO
--- Native resolution at high refresh rate.
 hl.monitor({
   output = "HDMI-A-1",
   mode = "2560x1440@143.98",
@@ -63,7 +62,6 @@ hl.config({
       color = 0x66000000,
     },
 
-    -- Keep blur disabled for now.
     blur = {
       enabled = false,
     },
@@ -77,7 +75,6 @@ hl.config({
     disable_hyprland_logo = true,
     force_default_wallpaper = 0,
 
-    -- Safety net if DPMS is used again later.
     mouse_move_enables_dpms = true,
     key_press_enables_dpms = true,
   },
@@ -192,19 +189,16 @@ notify-send "Screenshot saved" "$file"
 -- APPLICATION BINDS
 ----------------
 
--- Terminal
 hl.bind(
   mainMod .. " + Q",
   hl.dsp.exec_cmd(terminal)
 )
 
--- Launcher
 hl.bind(
   mainMod .. " + SPACE",
   hl.dsp.exec_cmd(launcher)
 )
 
--- File manager
 hl.bind(
   mainMod .. " + E",
   hl.dsp.exec_cmd(fileManager)
@@ -214,13 +208,11 @@ hl.bind(
 -- WINDOW BINDS
 ----------------
 
--- Close focused window
 hl.bind(
   mainMod .. " + C",
   hl.dsp.window.close()
 )
 
--- Fullscreen focused window
 hl.bind(
   mainMod .. " + F",
   hl.dsp.window.fullscreen({
@@ -229,7 +221,6 @@ hl.bind(
   })
 )
 
--- Toggle floating
 hl.bind(
   mainMod .. " + SHIFT + F",
   hl.dsp.window.float({
@@ -305,11 +296,6 @@ hl.bind(
 -- WORKSPACES
 ----------------
 
--- Super + 1..0:
--- switch to workspaces 1..10
---
--- Super + Shift + 1..0:
--- move focused window to workspaces 1..10
 for i = 1, 10 do
   local key = i % 10
 
@@ -328,7 +314,6 @@ for i = 1, 10 do
   )
 end
 
--- Scroll through workspaces.
 hl.bind(
   mainMod .. " + mouse_down",
   hl.dsp.focus({
@@ -363,7 +348,6 @@ hl.bind(
 -- MOUSE MOVE / RESIZE
 ----------------
 
--- Super + left mouse drag
 hl.bind(
   mainMod .. " + mouse:272",
   hl.dsp.window.drag(),
@@ -372,7 +356,6 @@ hl.bind(
   }
 )
 
--- Super + right mouse drag
 hl.bind(
   mainMod .. " + mouse:273",
   hl.dsp.window.resize(),
@@ -394,13 +377,11 @@ hl.bind(
 -- SCREENSHOTS
 ----------------
 
--- Region screenshot
 hl.bind(
   "Print",
   hl.dsp.exec_cmd(screenshotRegion)
 )
 
--- Full desktop screenshot
 hl.bind(
   "SHIFT + Print",
   hl.dsp.exec_cmd(screenshotFull)
@@ -456,6 +437,42 @@ hl.bind(
   hl.dsp.exec_cmd(
     "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
   ),
+  {
+    locked = true,
+  }
+)
+
+----------------
+-- MEDIA KEYS
+----------------
+
+hl.bind(
+  "XF86AudioPlay",
+  hl.dsp.exec_cmd("playerctl play-pause"),
+  {
+    locked = true,
+  }
+)
+
+hl.bind(
+  "XF86AudioPrev",
+  hl.dsp.exec_cmd("playerctl previous"),
+  {
+    locked = true,
+  }
+)
+
+hl.bind(
+  "XF86AudioNext",
+  hl.dsp.exec_cmd("playerctl next"),
+  {
+    locked = true,
+  }
+)
+
+hl.bind(
+  "XF86AudioStop",
+  hl.dsp.exec_cmd("playerctl stop"),
   {
     locked = true,
   }

@@ -31,7 +31,6 @@ in
   gtk = {
     enable = true;
 
-    # Prefer dark appearance without forcing a custom GTK4 theme.
     colorScheme = "dark";
 
     font = {
@@ -146,6 +145,33 @@ in
   };
 
   #
+  # Media player
+  #
+
+  programs.mpv = {
+    enable = true;
+
+    # Expose mpv through the standard MPRIS media-control interface.
+    scripts = [
+      pkgs.mpvScripts.mpris
+    ];
+
+    config = {
+      # Let mpv choose a supported hardware decoder.
+      hwdec = "auto-safe";
+
+      # Remember where we stopped a file.
+      save-position-on-quit = true;
+
+      # Keep the window open when playing audio-only media.
+      force-window = true;
+    };
+  };
+
+  # Provides playerctl plus the playerctld MPRIS daemon.
+  services.playerctld.enable = true;
+
+  #
   # PDF/document viewer
   #
 
@@ -192,6 +218,7 @@ in
       pkgs.xarchiver
       pkgs.imv
       pkgs.zathura
+      pkgs.mpv
     ];
   };
 
