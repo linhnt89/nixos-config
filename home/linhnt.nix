@@ -17,7 +17,7 @@ in
 
     settings = {
       user = {
-        # Keep your existing values here.
+        # Keep your actual existing values here.
         name = "Linh Nguyen";
         email = "linhtramnguyen@gmail.com";
       };
@@ -47,6 +47,14 @@ in
     # Screenshots
     pkgs.grim
     pkgs.slurp
+
+    # Audio control
+    pkgs.pavucontrol
+
+    # NetworkManager GTK connection editor.
+    # We install the package but do not run nm-applet,
+    # because Waybar already shows network status.
+    pkgs.networkmanagerapplet
   ];
 
   #
@@ -154,9 +162,8 @@ in
   # Idle management
   #
   # Lock only for now.
-  #
-  # We intentionally do NOT use DPMS here yet because of the
-  # display/power-management problem we encountered.
+  # DPMS remains disabled until we investigate the earlier
+  # display/power-management issue more carefully.
   #
 
   services.hypridle = {
@@ -247,7 +254,12 @@ in
           format = "VOL {volume}%";
           format-muted = "MUTED";
 
+          # Open full audio mixer.
           on-click =
+            "${pkgs.pavucontrol}/bin/pavucontrol";
+
+          # Right-click toggles mute.
+          on-click-right =
             "${pkgs.wireplumber}/bin/wpctl "
             + "set-mute @DEFAULT_AUDIO_SINK@ toggle";
 
@@ -278,6 +290,10 @@ in
 
           tooltip-format-disconnected =
             "Network disconnected";
+
+          # Open NetworkManager's GTK connection editor.
+          on-click =
+            "${pkgs.networkmanagerapplet}/bin/nm-connection-editor";
         };
 
         bluetooth = {
@@ -290,6 +306,10 @@ in
 
           tooltip-format-enumerate-connected =
             "{device_alias}";
+
+          # Blueman itself is installed by the NixOS
+          # services.blueman module.
+          on-click = "blueman-manager";
         };
 
         tray = {
