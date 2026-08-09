@@ -3,6 +3,72 @@
 let
   wallpaper =
     pkgs.nixos-artwork.wallpapers.nineish-dark-gray.gnomeFilePath;
+
+  #
+  # Session / power menu
+  #
+
+  powerMenu = pkgs.writeShellApplication {
+    name = "power-menu";
+
+    runtimeInputs = [
+      pkgs.fuzzel
+      pkgs.uwsm
+      pkgs.systemd
+    ];
+
+    text = ''
+      choice="$(
+        printf '%s\n' \
+          "Lock" \
+          "Logout" \
+          "Reboot" \
+          "Shutdown" |
+          fuzzel \
+            --dmenu \
+            --prompt="Power > "
+      )" || exit 0
+
+      confirm_action() {
+        action="$1"
+
+        answer="$(
+          printf '%s\n' \
+            "No" \
+            "Yes" |
+            fuzzel \
+              --dmenu \
+              --prompt="$action? > "
+        )" || return 1
+
+        [ "$answer" = "Yes" ]
+      }
+
+      case "$choice" in
+        "Lock")
+          loginctl lock-session
+          ;;
+
+        "Logout")
+          if confirm_action "Logout"; then
+            uwsm stop
+          fi
+          ;;
+
+        "Reboot")
+          if confirm_action "Reboot"; then
+            systemctl reboot
+          fi
+          ;;
+
+        "Shutdown")
+          if confirm_action "Shutdown"; then
+            systemctl poweroff
+          fi
+          ;;
+      esac
+    '';
+  };
 in
 {
   home.username = "linhnt";
@@ -151,24 +217,17 @@ in
   programs.mpv = {
     enable = true;
 
-    # Expose mpv through the standard MPRIS media-control interface.
     scripts = [
       pkgs.mpvScripts.mpris
     ];
 
     config = {
-      # Let mpv choose a supported hardware decoder.
       hwdec = "auto-safe";
-
-      # Remember where we stopped a file.
       save-position-on-quit = true;
-
-      # Keep the window open when playing audio-only media.
       force-window = true;
     };
   };
 
-  # Provides playerctl plus the playerctld MPRIS daemon.
   services.playerctld.enable = true;
 
   #
@@ -182,6 +241,9 @@ in
   #
 
   home.packages = [
+    # Our own session menu
+    powerMenu
+
     # Notifications
     pkgs.libnotify
 
@@ -258,8 +320,6 @@ in
     };
   };
 
-  # Explicit systemd service because D-Bus activation did not
-  # work correctly in our UWSM session.
   systemd.user.services.mako = {
     Unit = {
       Description = "Mako notification daemon";
@@ -351,7 +411,7 @@ in
   # Idle management
   #
   # Lock only.
-  # DPMS remains disabled for now.
+  # DPMS remains disabled.
   #
 
   services.hypridle = {

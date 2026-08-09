@@ -42,7 +42,6 @@ hl.config({
     },
 
     resize_on_border = true,
-
     allow_tearing = false,
 
     layout = "dwindle",
@@ -388,9 +387,16 @@ hl.bind(
 )
 
 ----------------
--- LOCK SCREEN
+-- SESSION
 ----------------
 
+-- Open session/power menu.
+hl.bind(
+  mainMod .. " + ESCAPE",
+  hl.dsp.exec_cmd("power-menu")
+)
+
+-- Lock directly without opening the menu.
 hl.bind(
   mainMod .. " + L",
   hl.dsp.exec_cmd("loginctl lock-session")
