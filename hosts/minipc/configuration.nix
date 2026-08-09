@@ -53,6 +53,40 @@
   };
 
   #
+  # Fonts
+  #
+
+  fonts.packages = [
+    pkgs.inter
+
+    pkgs.noto-fonts
+    pkgs.noto-fonts-cjk-sans
+    pkgs.noto-fonts-cjk-serif
+    pkgs.noto-fonts-color-emoji
+
+    pkgs.nerd-fonts.jetbrains-mono
+  ];
+
+  fonts.fontconfig.defaultFonts = {
+    sansSerif = [
+      "Inter"
+      "Noto Sans"
+    ];
+
+    serif = [
+      "Noto Serif"
+    ];
+
+    monospace = [
+      "JetBrainsMono Nerd Font"
+    ];
+
+    emoji = [
+      "Noto Color Emoji"
+    ];
+  };
+
+  #
   # Bluetooth
   #
 
@@ -67,6 +101,12 @@
 
   # Required for hyprlock authentication.
   security.pam.services.hyprlock = {};
+
+  #
+  # dconf / GTK settings infrastructure
+  #
+
+  programs.dconf.enable = true;
 
   #
   # Audio
@@ -85,8 +125,6 @@
   # File management
   #
 
-  # NixOS provides proper Thunar integration including
-  # D-Bus, systemd and xfconf support.
   programs.thunar = {
     enable = true;
 
@@ -96,13 +134,7 @@
     ];
   };
 
-  # Virtual filesystem support:
-  # Trash, removable devices, MTP and other GIO locations.
-  #
-  # This automatically enables services.udisks2.
   services.gvfs.enable = true;
-
-  # Thumbnail generation used by Thunar.
   services.tumbler.enable = true;
 
   #

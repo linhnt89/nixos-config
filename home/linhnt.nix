@@ -9,7 +9,7 @@ in
   home.homeDirectory = "/home/linhnt";
 
   #
-  # Programs
+  # Git
   #
 
   programs.git = {
@@ -24,15 +24,131 @@ in
     };
   };
 
+  #
+  # Appearance
+  #
+
+  gtk = {
+    enable = true;
+
+    # Prefer dark appearance without forcing a custom GTK4 theme.
+    colorScheme = "dark";
+
+    font = {
+      name = "Inter";
+      size = 11;
+      package = pkgs.inter;
+    };
+
+    iconTheme = {
+      name = "Adwaita";
+      package = pkgs.adwaita-icon-theme;
+    };
+  };
+
+  qt = {
+    enable = true;
+
+    platformTheme.name = "adwaita";
+    style.name = "adwaita-dark";
+  };
+
+  home.pointerCursor = {
+    package = pkgs.vanilla-dmz;
+    name = "Vanilla-DMZ";
+    size = 24;
+
+    gtk.enable = true;
+    x11.enable = true;
+  };
+
+  #
+  # Shell
+  #
+
   programs.zsh.enable = true;
 
-  programs.kitty.enable = true;
+  #
+  # Terminal
+  #
+
+  programs.kitty = {
+    enable = true;
+
+    font = {
+      package = pkgs.nerd-fonts.jetbrains-mono;
+      name = "JetBrainsMono Nerd Font";
+      size = 11;
+    };
+
+    settings = {
+      background = "#14161c";
+      foreground = "#e6e6e6";
+
+      cursor = "#e6e6e6";
+
+      selection_background = "#3b4252";
+      selection_foreground = "#ffffff";
+
+      window_padding_width = 8;
+
+      enable_audio_bell = false;
+    };
+  };
+
+  #
+  # Browser
+  #
 
   programs.firefox.enable = true;
 
-  programs.fuzzel.enable = true;
+  #
+  # Application launcher
+  #
 
-  # PDF/document viewer.
+  programs.fuzzel = {
+    enable = true;
+
+    settings = {
+      main = {
+        terminal = "${pkgs.kitty}/bin/kitty";
+
+        font = "Inter:size=11";
+        "icon-theme" = "Adwaita";
+
+        width = 40;
+        lines = 12;
+      };
+
+      colors = {
+        background = "14161cee";
+        text = "e6e6e6ff";
+        prompt = "e6e6e6ff";
+        placeholder = "888888ff";
+        input = "e6e6e6ff";
+
+        match = "89b4faff";
+
+        selection = "3b4252ff";
+        "selection-text" = "ffffffff";
+        "selection-match" = "89b4faff";
+
+        counter = "888888ff";
+
+        border = "5e81acff";
+      };
+
+      border = {
+        width = 2;
+        radius = 10;
+      };
+    };
+  };
+
+  #
+  # PDF/document viewer
+  #
+
   programs.zathura.enable = true;
 
   #
@@ -54,10 +170,10 @@ in
     # Audio control
     pkgs.pavucontrol
 
-    # NetworkManager GTK connection editor
+    # NetworkManager connection editor
     pkgs.networkmanagerapplet
 
-    # Archive manager used by Thunar's archive plugin
+    # Archive manager
     pkgs.xarchiver
 
     # Image viewer
@@ -66,9 +182,6 @@ in
 
   #
   # Default applications
-  #
-  # Home Manager reads the .desktop files from these packages
-  # and establishes their supported MIME associations as defaults.
   #
 
   xdg.mimeApps = {
@@ -92,7 +205,31 @@ in
   # Notifications
   #
 
-  services.mako.enable = true;
+  services.mako = {
+    enable = true;
+
+    settings = {
+      anchor = "top-right";
+
+      font = "Inter 11";
+
+      background-color = "#14161cee";
+      text-color = "#e6e6e6ff";
+
+      border-color = "#5e81acff";
+      border-size = 2;
+      border-radius = 10;
+
+      width = 360;
+
+      margin = 12;
+      padding = 12;
+
+      default-timeout = 5000;
+
+      icons = true;
+    };
+  };
 
   # Explicit systemd service because D-Bus activation did not
   # work correctly in our UWSM session.
@@ -153,7 +290,7 @@ in
       background = [
         {
           monitor = "";
-          color = "rgb(111318)";
+          color = "rgb(14161c)";
         }
       ];
 
@@ -173,9 +310,9 @@ in
           dots_center = true;
           fade_on_empty = false;
 
-          inner_color = "rgb(1e1e2e)";
-          outer_color = "rgb(89b4fa)";
-          font_color = "rgb(cdd6f4)";
+          inner_color = "rgb(1c1f26)";
+          outer_color = "rgb(5e81ac)";
+          font_color = "rgb(e6e6e6)";
 
           placeholder_text = "Password...";
         }
@@ -186,8 +323,8 @@ in
   #
   # Idle management
   #
-  # Lock only for now.
-  # DPMS remains disabled.
+  # Lock only.
+  # DPMS remains disabled for now.
   #
 
   services.hypridle = {
@@ -341,8 +478,10 @@ in
       * {
         border: none;
         border-radius: 0;
-        font-family: sans-serif;
+
+        font-family: Inter, sans-serif;
         font-size: 13px;
+
         min-height: 0;
       }
 
@@ -353,6 +492,7 @@ in
 
       #workspaces button {
         padding: 0 9px;
+
         color: #a8a8a8;
         background: transparent;
       }
@@ -363,8 +503,8 @@ in
       }
 
       #workspaces button.urgent {
-        background: #8f3f3f;
         color: #ffffff;
+        background: #8f3f3f;
       }
 
       #clock,
