@@ -115,7 +115,13 @@ in
   #
   # Notifications / control center
   #
-  # SwayNC replaces Mako as the notification daemon.
+  # SwayNC provides:
+  #
+  # - notification popups
+  # - notification history
+  # - Do Not Disturb
+  # - MPRIS media controls
+  # - volume control
   #
 
   services.swaync = {
@@ -163,7 +169,7 @@ in
       "control-center-height" = 620;
 
       #
-      # Use the MetaCube's main display explicitly.
+      # Main display
       #
 
       "control-center-preferred-output" = "HDMI-A-1";
@@ -208,12 +214,11 @@ in
       #
       # Control center layout
       #
-      # Keep this intentionally small for the first version.
-      #
 
       widgets = [
         "title"
         "dnd"
+        "mpris"
         "volume"
         "notifications"
       ];
@@ -228,6 +233,22 @@ in
 
         dnd = {
           text = "Do not disturb";
+        };
+
+        #
+        # Media controls
+        #
+        # Hide completely when there is no useful player
+        # metadata. Album art appears only when supplied by
+        # the application.
+        #
+
+        mpris = {
+          autohide = true;
+
+          "show-album-art" = "when-available";
+
+          "loop-carousel" = false;
         };
 
         volume = {
@@ -245,10 +266,6 @@ in
     #
     # Theme
     #
-    # SwayNC supplies the structure and widgets.
-    # We override its visual language to match Waybar,
-    # Fuzzel, Kitty, and the rest of our desktop.
-    #
 
     style = ''
       /*
@@ -260,7 +277,8 @@ in
 
         /*
          * SwayNC expects this variable as RGB components
-         * because its default CSS uses rgba(var(--noti-bg), ...).
+         * because its default CSS uses
+         * rgba(var(--noti-bg), ...).
          *
          * 1c1f26 = rgb(28, 31, 38)
          */
@@ -291,6 +309,15 @@ in
         --font-size-summary: 13px;
 
         --notification-icon-size: 48px;
+
+        /*
+         * MPRIS album art.
+         *
+         * SwayNC 0.12 uses this CSS variable instead of
+         * the old image-size config setting.
+         */
+
+        --mpris-album-art-icon-size: 72px;
       }
 
       /*
@@ -317,8 +344,6 @@ in
 
       /*
        * Floating notification placement
-       *
-       * Keep popups below the floating Waybar.
        */
 
       .floating-notifications {
@@ -524,6 +549,94 @@ in
         border-radius: 999px;
 
         box-shadow: none;
+      }
+
+      /*
+       * MPRIS media card
+       *
+       * Keep this fully opaque. This avoids album-art
+       * background effects and keeps rendering cheap.
+       */
+
+      .widget-mpris {
+        margin: 6px 10px;
+        padding: 0;
+
+        color: #${c.text};
+
+        background: transparent;
+      }
+
+      .widget-mpris-player {
+        margin: 0;
+        padding: 10px;
+
+        color: #${c.text};
+        background: #${c.surface};
+
+        border: 1px solid #${c.border};
+        border-radius: ${toString theme.radius.panel}px;
+
+        box-shadow: none;
+      }
+
+      /*
+       * Do not use the album artwork as a translucent
+       * background layer.
+       */
+
+      .mpris-overlay {
+        background: transparent;
+      }
+
+      .widget-mpris-album-art {
+        border-radius: ${toString theme.radius.control}px;
+
+        box-shadow: none;
+      }
+
+      .widget-mpris-title {
+        color: #${c.text};
+
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .widget-mpris-subtitle {
+        color: #${c.textMuted};
+
+        font-size: 12px;
+      }
+
+      /*
+       * Previous / play / next controls
+       */
+
+      .widget-mpris button {
+        margin: 2px;
+        padding: 4px;
+
+        color: #${c.textMuted};
+        background: transparent;
+
+        border: none;
+        border-radius: ${toString theme.radius.control}px;
+
+        box-shadow: none;
+      }
+
+      .widget-mpris button:hover {
+        color: #${c.text};
+        background: #${c.surfaceAlt};
+      }
+
+      .widget-mpris button:disabled {
+        color: #${c.textDim};
+        opacity: 0.6;
+      }
+
+      .widget-mpris button image {
+        -gtk-icon-size: 18px;
       }
 
       /*
