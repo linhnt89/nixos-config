@@ -2,11 +2,17 @@
 
 let
   #
+  # Shared theme
+  #
+
+  theme = import ../theme.nix;
+  c = theme.colors;
+
+  #
   # Wallpaper
   #
 
-  wallpaper =
-    pkgs.nixos-artwork.wallpapers.nineish-dark-gray.gnomeFilePath;
+  wallpaper = pkgs.nixos-artwork.wallpapers.nineish-dark-gray.gnomeFilePath;
 
   #
   # Session / power menu
@@ -99,14 +105,14 @@ in
     settings = {
       anchor = "top-right";
 
-      font = "Inter 11";
+      font = "${theme.fonts.sans} 11";
 
-      background-color = "#14161cee";
-      text-color = "#e6e6e6ff";
+      background-color = "#${c.surface}f2";
+      text-color = "#${c.text}ff";
 
-      border-color = "#5e81acff";
-      border-size = 2;
-      border-radius = 10;
+      border-color = "#${c.border}ff";
+      border-size = 1;
+      border-radius = theme.radius.panel;
 
       width = 360;
 
@@ -119,8 +125,11 @@ in
     };
   };
 
+  #
   # Explicit systemd service because D-Bus activation did not
   # work correctly in our UWSM session.
+  #
+
   systemd.user.services.mako = {
     Unit = {
       Description = "Mako notification daemon";
@@ -150,9 +159,7 @@ in
     };
 
     Service = {
-      ExecStart =
-        "${pkgs.wl-clipboard}/bin/wl-paste --watch "
-        + "${pkgs.cliphist}/bin/cliphist store";
+      ExecStart = "${pkgs.wl-clipboard}/bin/wl-paste --watch " + "${pkgs.cliphist}/bin/cliphist store";
 
       Restart = "on-failure";
     };
@@ -178,7 +185,7 @@ in
       background = [
         {
           monitor = "";
-          color = "rgb(14161c)";
+          color = "rgb(${c.background})";
         }
       ];
 
@@ -193,14 +200,14 @@ in
           valign = "center";
 
           outline_thickness = 3;
-          rounding = 12;
+          rounding = theme.radius.panel;
 
           dots_center = true;
           fade_on_empty = false;
 
-          inner_color = "rgb(1c1f26)";
-          outer_color = "rgb(5e81ac)";
-          font_color = "rgb(e6e6e6)";
+          inner_color = "rgb(${c.surface})";
+          outer_color = "rgb(${c.accentDim})";
+          font_color = "rgb(${c.text})";
 
           placeholder_text = "Password...";
         }
@@ -254,6 +261,5 @@ in
   # Hyprland native Lua configuration
   #
 
-  xdg.configFile."hypr/hyprland.lua".source =
-    ../hyprland.lua;
+  xdg.configFile."hypr/hyprland.lua".source = ../hyprland.lua;
 }

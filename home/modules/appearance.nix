@@ -1,5 +1,9 @@
 { pkgs, ... }:
 
+let
+  theme = import ../theme.nix;
+  c = theme.colors;
+in
 {
   #
   # GTK
@@ -11,7 +15,7 @@
     colorScheme = "dark";
 
     font = {
-      name = "Inter";
+      name = theme.fonts.sans;
       size = 11;
       package = pkgs.inter;
     };
@@ -55,17 +59,17 @@
 
     font = {
       package = pkgs.nerd-fonts.jetbrains-mono;
-      name = "JetBrainsMono Nerd Font";
+      name = theme.fonts.mono;
       size = 11;
     };
 
     settings = {
-      background = "#14161c";
-      foreground = "#e6e6e6";
+      background = "#${c.background}";
+      foreground = "#${c.text}";
 
-      cursor = "#e6e6e6";
+      cursor = "#${c.text}";
 
-      selection_background = "#3b4252";
+      selection_background = "#${c.surfaceAlt}";
       selection_foreground = "#ffffff";
 
       window_padding_width = 8;
@@ -85,7 +89,7 @@
       main = {
         terminal = "${pkgs.kitty}/bin/kitty";
 
-        font = "Inter:size=11";
+        font = "${theme.fonts.sans}:size=11";
         "icon-theme" = "Adwaita";
 
         width = 40;
@@ -93,26 +97,26 @@
       };
 
       colors = {
-        background = "14161cee";
-        text = "e6e6e6ff";
-        prompt = "e6e6e6ff";
-        placeholder = "888888ff";
-        input = "e6e6e6ff";
+        background = "${c.background}ee";
+        text = "${c.text}ff";
+        prompt = "${c.text}ff";
+        placeholder = "${c.textDim}ff";
+        input = "${c.text}ff";
 
-        match = "89b4faff";
+        match = "${c.accent}ff";
 
-        selection = "3b4252ff";
+        selection = "${c.surfaceAlt}ff";
         "selection-text" = "ffffffff";
-        "selection-match" = "89b4faff";
+        "selection-match" = "${c.accent}ff";
 
-        counter = "888888ff";
+        counter = "${c.textDim}ff";
 
-        border = "5e81acff";
+        border = "${c.accentDim}ff";
       };
 
       border = {
         width = 2;
-        radius = 10;
+        radius = theme.radius.panel;
       };
     };
   };
