@@ -4,8 +4,8 @@ let
   #
   # Pi configuration authored in the canonical main checkout.
   #
-  # These are intentionally out-of-store symlinks so Pi settings
-  # can be edited in place without rebuilding the system.
+  # Out-of-store symlinks keep the authored files version-controlled
+  # while allowing Pi to read/edit them directly.
   #
 
   piConfigDir =
@@ -13,10 +13,10 @@ let
 in
 {
   #
-  # Pi authored configuration
+  # Authored Pi configuration
   #
-  # Do not manage ~/.pi/agent/auth.json here.
-  # Credentials and runtime state remain local to Pi.
+  # Credentials, sessions, trust state, and other runtime data
+  # remain local under ~/.pi/agent/.
   #
 
   home.file.".pi/agent/settings.json".source =
@@ -26,4 +26,8 @@ in
   home.file.".pi/agent/models.json".source =
     config.lib.file.mkOutOfStoreSymlink
       "${piConfigDir}/models.json";
+
+  home.file.".pi/agent/AGENTS.md".source =
+    config.lib.file.mkOutOfStoreSymlink
+      "${piConfigDir}/AGENTS.md";
 }
