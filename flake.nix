@@ -17,6 +17,11 @@
       url = "github:kunchenguid/treehouse";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Agent-aware terminal/session runtime.
+    #
+    # Pin a stable release rather than tracking master.
+    herdr.url = "github:herdrdev/herdr/v0.8.0";
   };
 
   outputs =
@@ -25,6 +30,7 @@
       nixpkgs-unstable,
       home-manager,
       treehouse,
+      herdr,
       ...
     }:
     let
@@ -48,7 +54,7 @@
                 pkgsUnstable =
                   nixpkgs-unstable.legacyPackages.${system};
 
-                inherit treehouse;
+                inherit treehouse herdr;
               };
 
               home-manager.users.linhnt =

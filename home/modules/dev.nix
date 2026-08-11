@@ -4,6 +4,7 @@
   imports = [
     ./pi.nix
     ./treehouse.nix
+    ./herdr.nix
   ];
 
   #
