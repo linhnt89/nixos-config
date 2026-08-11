@@ -12,6 +12,11 @@
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    treehouse = {
+      url = "github:kunchenguid/treehouse";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -19,6 +24,7 @@
       nixpkgs,
       nixpkgs-unstable,
       home-manager,
+      treehouse,
       ...
     }:
     let
@@ -38,11 +44,11 @@
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
 
-              # Keep unstable packages opt-in. Home Manager modules
-              # must explicitly use pkgsUnstable.
               home-manager.extraSpecialArgs = {
                 pkgsUnstable =
                   nixpkgs-unstable.legacyPackages.${system};
+
+                inherit treehouse;
               };
 
               home-manager.users.linhnt =

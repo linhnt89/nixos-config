@@ -3,6 +3,7 @@
 {
   imports = [
     ./pi.nix
+    ./treehouse.nix
   ];
 
   #
