@@ -89,12 +89,26 @@
         "type": "github"
       }
     },
+    "noMistakes": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785998519,
+        "narHash": "sha256-XCWLuhKg9q63VqZ7JN8w9Ij7/sAD5S980dFtU73VCxg=",
+        "type": "tarball",
+        "url": "https://github.com/kunchenguid/no-mistakes/releases/download/v1.46.0/no-mistakes-v1.46.0-linux-amd64.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/kunchenguid/no-mistakes/releases/download/v1.46.0/no-mistakes-v1.46.0-linux-amd64.tar.gz"
+      }
+    },
     "root": {
       "inputs": {
         "herdr": "herdr",
         "home-manager": "home-manager",
         "nixpkgs": "nixpkgs_2",
         "nixpkgs-unstable": "nixpkgs-unstable",
+        "noMistakes": "noMistakes",
         "treehouse": "treehouse"
       }
     },

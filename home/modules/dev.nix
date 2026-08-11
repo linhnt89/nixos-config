@@ -5,6 +5,7 @@
     ./pi.nix
     ./treehouse.nix
     ./herdr.nix
+    ./firstmate.nix
   ];
 
   #

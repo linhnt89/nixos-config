@@ -19,9 +19,16 @@
     };
 
     # Agent-aware terminal/session runtime.
-    #
-    # Pin a stable release rather than tracking master.
     herdr.url = "github:herdrdev/herdr/v0.8.0";
+
+    # Firstmate requires no-mistakes >= 1.31.2.
+    #
+    # Pin the current stable Linux amd64 release archive rather
+    # than letting Firstmate's bootstrap installer mutate the host.
+    noMistakes = {
+      url = "https://github.com/kunchenguid/no-mistakes/releases/download/v1.46.0/no-mistakes-v1.46.0-linux-amd64.tar.gz";
+      flake = false;
+    };
   };
 
   outputs =
@@ -31,6 +38,7 @@
       home-manager,
       treehouse,
       herdr,
+      noMistakes,
       ...
     }:
     let
@@ -54,7 +62,11 @@
                 pkgsUnstable =
                   nixpkgs-unstable.legacyPackages.${system};
 
-                inherit treehouse herdr;
+                inherit
+                  treehouse
+                  herdr
+                  noMistakes
+                  ;
               };
 
               home-manager.users.linhnt =
