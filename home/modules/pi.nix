@@ -5,7 +5,7 @@ let
   # Pi configuration authored in the canonical main checkout.
   #
   # Out-of-store symlinks keep the authored files version-controlled
-  # while allowing Pi to read/edit them directly.
+  # while allowing Pi and its extensions to read them directly.
   #
 
   piConfigDir =
@@ -15,8 +15,8 @@ in
   #
   # Authored Pi configuration
   #
-  # Credentials, sessions, trust state, and other runtime data
-  # remain local under ~/.pi/agent/.
+  # Credentials, sessions, trust state, installed package contents,
+  # and other runtime data remain local under ~/.pi/.
   #
 
   home.file.".pi/agent/settings.json".source =
@@ -30,4 +30,12 @@ in
   home.file.".pi/agent/AGENTS.md".source =
     config.lib.file.mkOutOfStoreSymlink
       "${piConfigDir}/AGENTS.md";
+
+  home.file.".pi/agent/openai-server-compaction.json".source =
+    config.lib.file.mkOutOfStoreSymlink
+      "${piConfigDir}/openai-server-compaction.json";
+
+  home.file.".pi/web-search.json".source =
+    config.lib.file.mkOutOfStoreSymlink
+      "${piConfigDir}/web-search.json";
 }
