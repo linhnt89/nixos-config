@@ -35,7 +35,20 @@ in
     config.lib.file.mkOutOfStoreSymlink
       "${piConfigDir}/openai-server-compaction.json";
 
+  #
+  # pi-web-access
+  #
+  # pi-web-access follows XDG_CONFIG_HOME when it is set and
+  # otherwise falls back to ~/.pi. Expose the same authored
+  # configuration at both locations so behavior remains stable
+  # across graphical and shell environments.
+  #
+
   home.file.".pi/web-search.json".source =
+    config.lib.file.mkOutOfStoreSymlink
+      "${piConfigDir}/web-search.json";
+
+  xdg.configFile."pi/web-search.json".source =
     config.lib.file.mkOutOfStoreSymlink
       "${piConfigDir}/web-search.json";
 }
