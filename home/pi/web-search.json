@@ -1,0 +1,58 @@
+{
+  "workflow": "none",
+
+  "allowBrowserCookies": false,
+
+  "maxInlineContentChars": 30000,
+
+  "searchRouting": {
+    "providers": [
+      "searxng",
+      "exa",
+      "duckduckgo",
+      "anysearch",
+      "tinyfish",
+      "serpdive"
+    ],
+    "fallbackOn": [
+      "transient",
+      "quota",
+      "network",
+      "invalid-response"
+    ]
+  },
+
+  "serpdiveModel": "krill",
+
+  "fetchRouting": {
+    "providers": [
+      "http"
+    ],
+    "allowRemoteHostedProviders": false
+  },
+
+  "githubClone": {
+    "enabled": true,
+    "maxRepoSizeMB": 350,
+    "cloneTimeoutSeconds": 30,
+    "clonePath": "/tmp/pi-github-repos"
+  },
+
+  "youtube": {
+    "enabled": false
+  },
+
+  "video": {
+    "enabled": false
+  },
+
+  "pdf": {
+    "enabled": true,
+    "maxSizeMB": 20,
+    "provider": "unpdf"
+  },
+
+  "ssrf": {
+    "trustEnvProxy": false
+  }
+}
