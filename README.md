@@ -114,8 +114,9 @@ hyprland.nix
     Hyprlock PAM integration
 
 ssh.nix
-    OpenSSH server
-    key-only authentication
+    OpenSSH server (key-only)
+    Tailscale client
+    interface-scoped firewall (trusted LAN + tailnet)
 ```
 
 Host-specific settings stay in:

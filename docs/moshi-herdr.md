@@ -17,50 +17,42 @@ machine. Moshi is a window into them.
 | `tmux` (durable workspaces fallback) | `home/modules/moshi.nix` | declarative |
 | `herdr` (agent multiplexer, v0.8.0) | `home/modules/herdr.nix` via flake input | declarative |
 | Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
-| Host firewall | NixOS default firewall is active. Enabling sshd automatically opens TCP 22 on **all interfaces** (`networking.firewall.allowedTCPPorts = [22]`); the mosh UDP range 60000-61000 stays closed | **decision needed** (below) |
+| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** on the trusted LAN interface (`eno1`) and `tailscale0`; sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
+| Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
 
 Nothing here stores phone keys, pairing tokens, or any other
 secret — those are runtime state and stay out of Git.
 
-## Open network decision (captain)
+## Network access policy (implemented)
 
-Enabling `modules/nixos/ssh.nix` makes NixOS automatically open
-TCP 22 on all interfaces (`networking.firewall.allowedTCPPorts =
-[22]` — verified by evaluating the built configuration). The mosh
-UDP range 60000-61000 is not opened anywhere. Choosing the
-exposure policy is a captain decision, because it changes the
-firewall shape:
+Captain decision: trusted local-LAN **and** external Tailscale
+access, with nothing opened on WAN/public interfaces.
 
-1. **LAN only** — phone on the same Wi-Fi. Accept the automatic
-   TCP 22 rule (all interfaces) and add the mosh UDP range:
-   ```nix
-   networking.firewall.allowedUDPPortRanges = [
-     { from = 60000; to = 61000; }
-   ];
-   ```
-   Convenient at home; exposes key-only sshd to the whole LAN.
+TCP 22 and mosh UDP 60000-61000 are allowed **only** on:
 
-2. **Tailscale / VPN** — keep the firewall closed to everything
-   else and allow SSH/mosh only on the tailnet interface:
-   ```nix
-   networking.firewall.allowedTCPPorts = lib.mkForce [];
-   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 22 ];
-   networking.firewall.interfaces.tailscale0.allowedUDPPortRanges = [
-     { from = 60000; to = 61000; }
-   ];
-   ```
-   Phone connects to the Tailscale IP even from cellular.
+- `eno1` — the trusted wired LAN interface (currently connected
+  home network), and
+- `tailscale0` — the Tailscale tailnet interface, reachable from
+  anywhere the device is logged in (cellular included).
 
-3. **Public exposure** — not recommended and explicitly out of
-   scope. Moshi's own docs assume a private path (LAN or
-   Tailscale); this machine should never be reachable from the
-   public internet.
+Everything else stays closed: the spare wired port (`enp5s0`),
+Wi-Fi (`wlp4s0`), and any WAN/public interface. sshd's implicit
+"open 22 everywhere" firewall rule is disabled
+(`services.openssh.openFirewall = false`); rules live in
+`networking.firewall.interfaces` in `modules/nixos/ssh.nix`.
 
-Until the decision lands, do **not switch** this generation: the
-currently booted generation has no sshd and no open ports.
-Whatever the choice, SSH authentication stays locked down (keys
-only, no passwords, no root), so the decision is purely about the
-firewall shape.
+Keeping the boundary honest:
+
+- If `eno1` ever joins an untrusted network (travel, a public
+  LAN), remove it from `networking.firewall.interfaces` and use
+  the Tailscale path instead.
+- To also serve SSH over the spare wired port or home Wi-Fi, add
+  `enp5s0` / `wlp4s0` blocks to `networking.firewall.interfaces`
+  the same way — only once that interface is on the trusted LAN.
+
+SSH authentication is key-only everywhere (no passwords, no
+root), so the firewall boundary is the only access control on top
+of the keys.
 
 ## Manual steps
 
@@ -74,9 +66,26 @@ Install Moshi from Google Play (Android 10 or newer).
 
 ### 2. Host reachability
 
-Pick the network path from the decision above and make sure the
-phone can reach the host on it (LAN IP, Tailscale name, etc.).
-If SSH is not reachable from the phone, nothing else works.
+Two supported paths; pick whichever fits where the phone is.
+
+**Path A — LAN** (phone on the same home network): the host is
+reachable on `eno1`'s address:
+
+```bash
+ip -4 -o addr show eno1
+```
+
+**Path B — Tailscale** (cellular, travel, anywhere): one-time
+host login, then the tailnet address:
+
+```bash
+sudo tailscale up        # interactive browser login; auth keys
+                         # must never be committed to this repo
+tailscale ip -4          # or use the MagicDNS name
+```
+
+In Moshi, use the chosen address as the host. If SSH is not
+reachable from the phone, nothing else works.
 
 ### 3. Easy Pair (recommended) or manual key
 
@@ -196,8 +205,11 @@ If `command -v herdr` prints nothing, the PATH note in
   `herdr session attach <name>` and reconnect.
 - **Mosh cannot connect** — mosh bootstraps over SSH then
   switches to UDP 60000-61000. If SSH works but mosh does not,
-  the UDP range is the pending firewall decision; use connection
-  type **SSH** as a fallback in the meantime.
+  confirm the phone is on one of the allowed paths (home LAN via
+  `eno1`, or Tailscale via `tailscale0`) — the UDP range is
+  deliberately not open on other interfaces. Over cellular, use
+  the Tailscale path; over a LAN that is not the trusted one, use
+  connection type **SSH** as a fallback.
 
 Sources: Moshi docs — [Install and prepare a host](https://getmoshi.app/docs/install),
 [Herdr](https://getmoshi.app/docs/herdr),
