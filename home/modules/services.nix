@@ -1205,18 +1205,145 @@ in
       general = {
         hide_cursor = true;
         ignore_empty_input = true;
+
+        # Reset the fail state after two seconds.
+        fail_timeout = 2000;
+      };
+
+      animations = {
+        enabled = true;
+        bezier = "linear, 1, 1, 0, 0";
+
+        animation = [
+          "fadeIn, 1, 5, linear"
+          "fadeOut, 1, 5, linear"
+          "inputFieldDots, 1, 2, linear"
+        ];
+      };
+
+      #
+      # Authentication
+      #
+      # Password stays the primary path (PAM service `hyprlock`).
+      #
+      # Fingerprint is opt-in at runtime: hyprlock probes the fprintd
+      # service over D-Bus and only announces a fingerprint prompt when
+      # a libfprint-supported reader is present and verification can
+      # start. With no reader (MetaCube currently) the prompt stays
+      # empty, the `$FPRINTPROMPT` hint label renders nothing, and only
+      # the password field remains.
+      #
+
+      auth = {
+        pam = {
+          enabled = true;
+          module = "hyprlock";
+        };
+
+        fingerprint = {
+          enabled = true;
+          ready_message = "Touch fingerprint to unlock";
+          present_message = "Scanning fingerprint...";
+          retry_delay = 250;
+        };
       };
 
       background = [
         {
           monitor = "";
+
+          # Current wallpaper (same source as hyprpaper), blurred.
+          path = wallpaper;
           color = "rgb(${c.background})";
+
+          blur_passes = 3;
+          blur_size = 7;
+        }
+      ];
+
+      label = [
+        #
+        # Clock, top-left. 24-hour format matches the waybar clock.
+        #
+
+        {
+          monitor = "";
+
+          text = "<span weight='light'>$TIME</span>";
+          color = "rgb(${c.text})";
+          font_size = 52;
+          font_family = theme.fonts.sans;
+
+          position = "30, -24";
+          halign = "left";
+          valign = "top";
+        }
+
+        #
+        # Date, muted, below the clock.
+        #
+
+        {
+          monitor = "";
+
+          text = "cmd[update:60000] date +\"%A, %d %B %Y\"";
+          color = "rgb(${c.textMuted})";
+          font_size = 18;
+          font_family = theme.fonts.sans;
+
+          position = "30, -90";
+          halign = "left";
+          valign = "top";
+        }
+
+        #
+        # Unlock hint, bottom-left.
+        #
+
+        {
+          monitor = "";
+
+          text = "Type to unlock · Esc to blur";
+          color = "rgb(${c.textDim})";
+          font_size = 13;
+          font_family = theme.fonts.sans;
+
+          position = "30, 24";
+          halign = "left";
+          valign = "bottom";
+        }
+
+        #
+        # Fingerprint hint, bottom-right.
+        #
+        # `$FPRINTPROMPT` only carries hyprlock's fingerprint prompt
+        # while fprintd reports a usable reader (see `auth` above);
+        # otherwise it resolves to the empty string and the label is
+        # invisible. Password remains the fallback in both cases.
+        #
+
+        {
+          monitor = "";
+
+          text = "$FPRINTPROMPT";
+          color = "rgb(${c.accent})";
+          font_size = 13;
+          font_family = theme.fonts.sans;
+
+          position = "-30, 24";
+          halign = "right";
+          valign = "bottom";
         }
       ];
 
       "input-field" = [
         {
           monitor = "";
+
+          #
+          # Geometry and interaction stay untouched: same size and
+          # position, dots, Enter submit, Esc blur, PAM unlock.
+          #
 
           size = "260, 52";
           position = "0, -60";
@@ -1235,6 +1362,23 @@ in
           font_color = "rgb(${c.text})";
 
           placeholder_text = "Password...";
+
+          #
+          # Feedback, using the static theme tokens:
+          # - wrong password: danger outline + PAM failure text
+          # - caps lock on: warning outline
+          # - authenticating: accent outline
+          #
+
+          fail_color = "rgb(${c.danger})";
+          fail_text = "<i>$FAIL</i>";
+
+          capslock_color = "rgb(${c.warning})";
+
+          check_color = "rgb(${c.accent})";
+          check_text = "";
+
+          swap_font_color = false;
         }
       ];
     };
@@ -1255,8 +1399,21 @@ in
 
       listener = [
         {
+          # Lock after 10 minutes (unchanged).
           timeout = 600;
           on-timeout = "loginctl lock-session";
+        }
+        {
+          # Then switch the display off after another minute.
+          #
+          # hyprlock is already up by then, so waking input lands
+          # on the lock screen, never straight on the desktop.
+          #
+          # No suspend: the mini-PC has no battery.
+
+          timeout = 660;
+          on-timeout = "hyprctl dispatch \"hl.dsp.dpms({action='off'})\"";
+          on-resume = "hyprctl dispatch \"hl.dsp.dpms({action='on'})\"";
         }
       ];
     };
