@@ -18,6 +18,7 @@
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/hyprland.nix
+    ../../modules/nixos/ssh.nix
   ];
 
   #

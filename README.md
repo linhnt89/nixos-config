@@ -31,18 +31,24 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │       ├── base.nix
 │       ├── desktop.nix
 │       ├── fonts.nix
-│       └── hyprland.nix
+│       ├── hyprland.nix
+│       └── ssh.nix
 │
-└── home/
-    ├── linhnt.nix
-    ├── hyprland.lua
-    └── modules/
-        ├── appearance.nix
-        ├── apps.nix
-        ├── git.nix
-        ├── services.nix
-        ├── shell.nix
-        └── waybar.nix
+├── home/
+│   ├── linhnt.nix
+│   ├── hyprland.lua
+│   └── modules/
+│       ├── appearance.nix
+│       ├── apps.nix
+│       ├── git.nix
+│       ├── herdr.nix
+│       ├── moshi.nix
+│       ├── services.nix
+│       ├── shell.nix
+│       └── waybar.nix
+│
+└── docs/
+    └── moshi-herdr.md
 ```
 
 ## Architecture
@@ -106,6 +112,10 @@ hyprland.nix
     UWSM
     greetd / tuigreet
     Hyprlock PAM integration
+
+ssh.nix
+    OpenSSH server
+    key-only authentication
 ```
 
 Host-specific settings stay in:
@@ -180,6 +190,14 @@ services.nix
 
 waybar.nix
     Waybar configuration and CSS
+
+moshi.nix
+    Moshi mobile-terminal host support
+    mosh
+    tmux
+
+herdr.nix
+    Herdr agent session runtime
 ```
 
 `home/linhnt.nix` is the Home Manager entry point and imports these modules.
@@ -188,6 +206,14 @@ The native Hyprland Lua configuration is:
 
 ```text
 home/hyprland.lua
+```
+
+Documentation:
+
+```text
+docs/moshi-herdr.md
+    Connecting the Moshi Android app to MetaCube
+    and attaching to Herdr sessions
 ```
 
 ## Where should a new setting go?
