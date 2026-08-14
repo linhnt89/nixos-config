@@ -38,7 +38,10 @@
   # Tailscale client (external access path)
   #
 
-  services.tailscale.enable = true;
+  services.tailscale = {
+    enable = true;
+    extraSetFlags = [ "--netfilter-mode=off" ];
+  };
 
   #
   # Interface-scoped firewall

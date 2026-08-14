@@ -19,6 +19,7 @@ machine. Moshi is a window into them.
 | Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
 | Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** on the trusted LAN interface (`eno1`) and `tailscale0`; sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
 | Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
+| Tailscale netfilter mode | `services.tailscale.extraSetFlags` | persistently `off`, so the host firewall remains authoritative |
 
 Nothing here stores phone keys, pairing tokens, or any other
 secret — those are runtime state and stay out of Git.
@@ -40,6 +41,9 @@ Wi-Fi (`wlp4s0`), and any WAN/public interface. sshd's implicit
 "open 22 everywhere" firewall rule is disabled
 (`services.openssh.openFirewall = false`); rules live in
 `networking.firewall.interfaces` in `modules/nixos/ssh.nix`.
+Tailscale's netfilter mode is persistently set to `off` through
+`services.tailscale.extraSetFlags`, so its packet hooks do not
+bypass these interface-scoped rules.
 
 Keeping the boundary honest:
 
@@ -75,17 +79,24 @@ reachable on `eno1`'s address:
 ip -4 -o addr show eno1
 ```
 
-**Path B — Tailscale** (cellular, travel, anywhere): one-time
-host login, then the tailnet address:
+**Path B — Tailscale** (cellular, travel, anywhere): use the
+same tailnet on MetaCube and the Android phone.
+
+On MetaCube, log in once interactively and keep the netfilter
+setting explicit:
 
 ```bash
-sudo tailscale up        # interactive browser login; auth keys
-                         # must never be committed to this repo
-tailscale ip -4          # or use the MagicDNS name
+sudo tailscale up --netfilter-mode=off  # browser login; never commit auth keys
+tailscale ip -4                         # or use the MagicDNS name
 ```
 
-In Moshi, use the chosen address as the host. If SSH is not
-reachable from the phone, nothing else works.
+On Android, install **Tailscale** from Google Play, sign in to
+the same tailnet as MetaCube, approve the device if requested,
+and tap **Connect** to allow its VPN connection. Keep Tailscale
+connected while using Moshi over cellular or another network.
+
+In Moshi, use the MetaCube Tailscale IP or MagicDNS name as the
+host. If SSH is not reachable from the phone, nothing else works.
 
 ### 3. Easy Pair (recommended) or manual key
 
@@ -111,7 +122,10 @@ over the setup session, and the host installs it in
 Manual fallback (**New Connection** in Moshi): host = reachable
 IP/name, port = 22, user = `linhnt`, authentication = key file.
 Let Moshi generate an Ed25519 key, then paste the public key into
-`~/.ssh/authorized_keys` on the host (or `ssh-copy-id`).
+`~/.ssh/authorized_keys` on the host. If an already-authorized
+SSH key or local console is available, `ssh-copy-id` can install
+the new key; it cannot bootstrap the first connection because
+password and keyboard-interactive authentication are disabled.
 Passwords are not possible here: sshd rejects them by design.
 
 ### 4. Start / attach Herdr sessions
@@ -191,12 +205,20 @@ If `command -v herdr` prints nothing, the PATH note in
 - **`moshi-hook status` reports `herdr: not found`** — the
   daemon does not inherit shell startup files. It searches
   standard Nix profiles, which should cover this install; if it
-  still misses, override with
-  `systemctl --user edit moshi-hook.service`:
+  still misses, first find the executable:
+
+  ```bash
+  command -v herdr
+  ```
+
+  On this configuration it prints
+  `/etc/profiles/per-user/linhnt/bin/herdr`. Use that absolute
+  path in the override; systemd does not perform shell command
+  substitution:
 
   ```ini
   [Service]
-  Environment="MOSHI_HERDR_PATH=$(command -v herdr)"
+  Environment="MOSHI_HERDR_PATH=/etc/profiles/per-user/linhnt/bin/herdr"
   ```
 
   then `systemctl --user daemon-reload` and restart the service.
