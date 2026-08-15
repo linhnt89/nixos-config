@@ -17,9 +17,10 @@ machine. Moshi is a window into them.
 | `tmux` (durable workspaces fallback) | `home/modules/moshi.nix` | declarative |
 | `herdr` (agent multiplexer, v0.8.0) | `home/modules/herdr.nix` via flake input | declarative |
 | Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
-| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1`, plus all tailnet peers on `tailscale0` (the LAN source restriction applies only to `eno1`); sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
+| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1`, plus all tailnet peers on `tailscale0` (the LAN source restriction applies only to `eno1`); sshd's automatic all-interface open is disabled; Tailscale UDP 41641 is opened separately for `tailscaled`; SSH/mosh stay closed on WAN/public and unused interfaces | declarative |
 | Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
 | Tailscale netfilter mode | `services.tailscale.extraSetFlags` | persistently `off`, so the host firewall remains authoritative |
+| Tailscale transport | `services.tailscale.openFirewall` | UDP 41641 is open for direct authenticated peer handshakes and is handled by `tailscaled`, not SSH or mosh |
 
 Nothing here stores phone keys, pairing tokens, or any other
 secret — those are runtime state and stay out of Git.
@@ -27,7 +28,9 @@ secret — those are runtime state and stay out of Git.
 ## Network access policy (implemented)
 
 Captain decision: trusted local-LAN **and** external Tailscale
-access, with nothing opened on WAN/public interfaces.
+access, with SSH and mosh not opened on WAN/public interfaces.
+Tailscale's own UDP transport port (41641) is the deliberate
+exception, opened for direct authenticated peer handshakes.
 
 TCP 22 and mosh UDP 60000-61000 are allowed **only** from:
 
@@ -38,11 +41,13 @@ TCP 22 and mosh UDP 60000-61000 are allowed **only** from:
 
 `eno1` also carries a globally routable IPv6 prefix, but the LAN
 exception is IPv4-only, so those public IPv6 addresses do not
-receive SSH or mosh port exceptions. Everything else stays closed:
-the spare wired port (`enp5s0`), Wi-Fi (`wlp4s0`), and any
-WAN/public interface. sshd's implicit "open 22 everywhere" firewall
-rule is disabled (`services.openssh.openFirewall = false`); the
-Tailscale rule is interface-scoped and the LAN source rules are in
+receive SSH or mosh port exceptions. The SSH/mosh exceptions do not apply to the spare wired port
+(`enp5s0`), Wi-Fi (`wlp4s0`), or any WAN/public interface. UDP
+41641 is separately open for Tailscale transport; it is handled by
+`tailscaled`, not an SSH or mosh listener. sshd's implicit "open 22
+everywhere" firewall rule is disabled
+(`services.openssh.openFirewall = false`); the Tailscale SSH/mosh
+rules are interface-scoped and the LAN source rules are in
 `networking.firewall.extraCommands` in `modules/nixos/ssh.nix`.
 Tailscale's netfilter mode is persistently set to `off` through
 `services.tailscale.extraSetFlags`, so its packet hooks do not

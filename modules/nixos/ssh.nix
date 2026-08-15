@@ -40,6 +40,7 @@
 
   services.tailscale = {
     enable = true;
+    openFirewall = true;
     extraSetFlags = [ "--netfilter-mode=off" ];
   };
 
