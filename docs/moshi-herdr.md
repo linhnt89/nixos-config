@@ -17,7 +17,7 @@ machine. Moshi is a window into them.
 | `tmux` (durable workspaces fallback) | `home/modules/moshi.nix` | declarative |
 | `herdr` (agent multiplexer, v0.8.0) | `home/modules/herdr.nix` via flake input | declarative |
 | Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
-| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1` and on `tailscale0`; sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
+| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1`, plus all tailnet peers on `tailscale0` (the LAN source restriction applies only to `eno1`); sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
 | Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
 | Tailscale netfilter mode | `services.tailscale.extraSetFlags` | persistently `off`, so the host firewall remains authoritative |
 
@@ -239,8 +239,10 @@ If `command -v herdr` prints nothing, the PATH note in
   confirm the phone is on one of the allowed paths (home LAN via
   `eno1`, or Tailscale via `tailscale0`) — the UDP range is
   deliberately not open on other interfaces. Over cellular, use
-  the Tailscale path; over a LAN that is not the trusted one, use
-  connection type **SSH** as a fallback.
+  the Tailscale path; over an untrusted LAN, connect the phone to
+  the same tailnet and use Tailscale instead of that LAN directly.
+  Use connection type **SSH** as a fallback only on the trusted
+  LAN or through Tailscale, where TCP 22 is reachable.
 
 Sources: Moshi docs — [Install and prepare a host](https://getmoshi.app/docs/install),
 [Herdr](https://getmoshi.app/docs/herdr),
