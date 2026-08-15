@@ -17,7 +17,7 @@ machine. Moshi is a window into them.
 | `tmux` (durable workspaces fallback) | `home/modules/moshi.nix` | declarative |
 | `herdr` (agent multiplexer, v0.8.0) | `home/modules/herdr.nix` via flake input | declarative |
 | Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
-| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** on the trusted LAN interface (`eno1`) and `tailscale0`; sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
+| Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1` and on `tailscale0`; sshd's automatic all-interface open is disabled; WAN/public and unused interfaces stay closed | declarative |
 | Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
 | Tailscale netfilter mode | `services.tailscale.extraSetFlags` | persistently `off`, so the host firewall remains authoritative |
 
@@ -29,30 +29,35 @@ secret — those are runtime state and stay out of Git.
 Captain decision: trusted local-LAN **and** external Tailscale
 access, with nothing opened on WAN/public interfaces.
 
-TCP 22 and mosh UDP 60000-61000 are allowed **only** on:
+TCP 22 and mosh UDP 60000-61000 are allowed **only** from:
 
-- `eno1` — the trusted wired LAN interface (currently connected
-  home network), and
+- `192.168.1.0/24` on `eno1` — the trusted wired LAN
+  (currently connected home network), and
 - `tailscale0` — the Tailscale tailnet interface, reachable from
   anywhere the device is logged in (cellular included).
 
-Everything else stays closed: the spare wired port (`enp5s0`),
-Wi-Fi (`wlp4s0`), and any WAN/public interface. sshd's implicit
-"open 22 everywhere" firewall rule is disabled
-(`services.openssh.openFirewall = false`); rules live in
-`networking.firewall.interfaces` in `modules/nixos/ssh.nix`.
+`eno1` also carries a globally routable IPv6 prefix, but the LAN
+exception is IPv4-only, so those public IPv6 addresses do not
+receive SSH or mosh port exceptions. Everything else stays closed:
+the spare wired port (`enp5s0`), Wi-Fi (`wlp4s0`), and any
+WAN/public interface. sshd's implicit "open 22 everywhere" firewall
+rule is disabled (`services.openssh.openFirewall = false`); the
+Tailscale rule is interface-scoped and the LAN source rules are in
+`networking.firewall.extraCommands` in `modules/nixos/ssh.nix`.
 Tailscale's netfilter mode is persistently set to `off` through
 `services.tailscale.extraSetFlags`, so its packet hooks do not
 bypass these interface-scoped rules.
 
 Keeping the boundary honest:
 
+- The LAN source scope is the current `192.168.1.0/24` subnet. If
+  the trusted router changes subnets, update the source rules in
+  `modules/nixos/ssh.nix` before using the LAN path.
 - If `eno1` ever joins an untrusted network (travel, a public
-  LAN), remove it from `networking.firewall.interfaces` and use
-  the Tailscale path instead.
+  LAN), remove its source rules and use the Tailscale path instead.
 - To also serve SSH over the spare wired port or home Wi-Fi, add
-  `enp5s0` / `wlp4s0` blocks to `networking.firewall.interfaces`
-  the same way — only once that interface is on the trusted LAN.
+  source-scoped rules for `enp5s0` / `wlp4s0` only once that
+  interface is on the trusted LAN.
 
 SSH authentication is key-only everywhere (no passwords, no
 root), so the firewall boundary is the only access control on top
@@ -73,7 +78,7 @@ Install Moshi from Google Play (Android 10 or newer).
 Two supported paths; pick whichever fits where the phone is.
 
 **Path A — LAN** (phone on the same home network): the host is
-reachable on `eno1`'s address:
+reachable on `eno1`'s IPv4 address in `192.168.1.0/24`:
 
 ```bash
 ip -4 -o addr show eno1
@@ -106,7 +111,7 @@ the supported path and it is not a pinned Nix input:
 
 ```bash
 curl -fsSL https://getmoshi.app/install.sh | sh
-moshi-hook host setup        # prints an Easy Pair QR
+/home/linhnt/.local/bin/moshi-hook host setup  # prints an Easy Pair QR
 ```
 
 In Moshi onboarding tap **Easy Pair** and scan the QR. Moshi
@@ -156,12 +161,16 @@ detected the same way if you ever prefer it.
 
 ### 5. Optional: Moshi agent hooks (`moshi-hook` daemon)
 
+The installer places `moshi-hook` at
+`/home/linhnt/.local/bin/moshi-hook`. That directory is not added
+by this configuration, so use the absolute path below:
+
 For inbox cards and push events when an agent needs you:
 
 ```bash
-moshi-hook pair --token <token from the Moshi app>
-moshi-hook install   # writes hook entries into agent config files
-moshi-hook serve     # long-running daemon; local gateway on 127.0.0.1:24543
+/home/linhnt/.local/bin/moshi-hook pair --token <token from the Moshi app>
+/home/linhnt/.local/bin/moshi-hook install   # writes hook entries into agent config files
+/home/linhnt/.local/bin/moshi-hook serve     # long-running daemon; local gateway on 127.0.0.1:24543
 ```
 
 Keep `moshi-hook serve` alive with a process manager. A systemd
@@ -174,7 +183,7 @@ Description=Moshi hook daemon
 After=network-online.target
 
 [Service]
-ExecStart=%h/.local/bin/moshi-hook serve
+ExecStart=/home/linhnt/.local/bin/moshi-hook serve
 Restart=on-failure
 
 [Install]
@@ -184,7 +193,7 @@ WantedBy=default.target
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now moshi-hook.service
-moshi-hook status
+/home/linhnt/.local/bin/moshi-hook status
 ```
 
 ## Verification and troubleshooting
@@ -202,7 +211,7 @@ If `command -v herdr` prints nothing, the PATH note in
 - **Moshi doesn't detect Herdr** — most common cause is the
   non-interactive PATH, which is already handled here (zsh +
   `/etc/zshenv`). Verify with the command above.
-- **`moshi-hook status` reports `herdr: not found`** — the
+- **`/home/linhnt/.local/bin/moshi-hook status` reports `herdr: not found`** — the
   daemon does not inherit shell startup files. It searches
   standard Nix profiles, which should cover this install; if it
   still misses, first find the executable:

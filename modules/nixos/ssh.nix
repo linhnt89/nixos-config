@@ -12,8 +12,8 @@
   # - Tailscale runs as a declarative client daemon; logging
   #   in (`tailscale up`) stays a manual one-time step so no
   #   auth key ever lands in this repository.
-  # - TCP 22 and mosh UDP 60000-61000 are allowed ONLY on the
-  #   trusted wired LAN interface (eno1) and the tailnet
+  # - TCP 22 and mosh UDP 60000-61000 are allowed only from the
+  #   trusted LAN IPv4 network on eno1 and on the tailnet
   #   interface (tailscale0). sshd's automatic all-interface
   #   firewall rule is disabled via services.openssh.openFirewall
   #   = false; WAN/public interfaces and currently unused
@@ -44,24 +44,21 @@
   };
 
   #
-  # Interface-scoped firewall
+  # Interface- and source-scoped firewall
   #
 
-  networking.firewall.interfaces = {
-    # Trusted wired LAN (currently connected home network).
-    eno1 = {
-      allowedTCPPorts = [ 22 ];
-      allowedUDPPortRanges = [
-        { from = 60000; to = 61000; }
-      ];
-    };
-
-    # Tailnet; reachable from anywhere the device is logged in.
-    tailscale0 = {
-      allowedTCPPorts = [ 22 ];
-      allowedUDPPortRanges = [
-        { from = 60000; to = 61000; }
-      ];
-    };
+  # Tailnet; reachable from anywhere the device is logged in.
+  networking.firewall.interfaces.tailscale0 = {
+    allowedTCPPorts = [ 22 ];
+    allowedUDPPortRanges = [
+      { from = 60000; to = 61000; }
+    ];
   };
+
+  # eno1 also carries a globally routable IPv6 prefix. Keep the
+  # trusted LAN exception limited to its current IPv4 subnet.
+  networking.firewall.extraCommands = ''
+    iptables -A nixos-fw -i eno1 -s 192.168.1.0/24 -p tcp --dport 22 -j nixos-fw-accept
+    iptables -A nixos-fw -i eno1 -s 192.168.1.0/24 -p udp --dport 60000:61000 -j nixos-fw-accept
+  '';
 }
