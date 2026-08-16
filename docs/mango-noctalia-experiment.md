@@ -58,6 +58,33 @@ validation script's `--preflight` check on the fresh VT login.
 No additional Noctalia recommended services are added, avoiding
 machine-global `upower`/`power-profiles-daemon` dependencies.
 
+## Bluetooth in the Mango session
+
+The stable Hyprland session keeps the legacy blueman tray applet
+(`blueman-applet`, started from its XDG autostart entry by the systemd user
+manager). In Mango that applet would duplicate Noctalia's built-in Bluetooth
+bar widget (one icon in the `tray` widget, one in the `bluetooth` widget), so
+the experiment suppresses the applet in Mango only:
+
+- `home/modules/experiment.nix` writes `~/.config/autostart/blueman.desktop`,
+  a shadow of the system entry (`/etc/xdg/autostart/blueman.desktop`, from
+  `services.blueman.enable`) with `NotShowIn=mango`. The XDG autostart search
+  order gives the user-level file precedence, and systemd >= 260 converts
+  `NotShowIn=` into an `ExecCondition=` evaluated at service start, so the
+  applet is skipped exactly when `XDG_CURRENT_DESKTOP` contains mango.
+- Noctalia's built-in Bluetooth widget is the Mango Bluetooth UI and is
+  untouched; the general `tray` widget stays, so other tray applications are
+  unaffected.
+- BlueZ/`hardware.bluetooth` support and `blueman-manager` (the on-click
+  action behind the Bluetooth bar icons and Waybar) remain available.
+- Flag off (rollback): the shadow file is removed and the system entry
+  behaves exactly as before in every session.
+
+Regression coverage: `scripts/test-mango-blueman.sh` (wired into
+`scripts/check.sh`) evaluates the flag-on and flag-off configurations and
+asserts the shadow exists with `NotShowIn=mango`/`Exec=blueman-applet` when
+on and is absent when off.
+
 ## Build boundary
 
 The host now sets the flag on, so the plain toplevel build exercises the
