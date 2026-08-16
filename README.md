@@ -606,10 +606,25 @@ Do not change them merely because NixOS or Home Manager is upgraded to a newer r
 
 Dependency upgrades are deliberate, reviewed changes: Dependabot opens
 one targeted PR per input (Nix and npm weekly, GitHub Actions monthly),
-CI builds every PR, and nothing is activated automatically. The full
-procedure — targeted updates, build/verify/switch, rollback, the
-no-mistakes daemon restart, and the canonical-clean-checkout rule — is
-in:
+and nothing is activated automatically.
+
+**Local validation is authoritative.** Every change — including
+Dependabot/update PRs — must pass the repository-owned local check
+before merge. It runs static checks, `nix flake check`, and a
+non-activating build of the system toplevel; it never switches or
+activates anything:
+
+```bash
+scripts/check.sh                # static checks + nix flake check + build
+```
+
+CI is an optional fallback for an independent clean-run build
+(`workflow_dispatch` only), not a required check on PRs or pushes. Real
+desktop/system-use validation — building, verifying, and switching on
+the machine — remains a manual post-merge captain action (see "Normal
+rebuild workflow"). The full procedure — targeted updates,
+build/verify/switch, rollback, the no-mistakes daemon restart, and the
+canonical-clean-checkout rule — is in:
 
 ```text
 docs/updates-runbook.md
@@ -618,6 +633,7 @@ docs/updates-runbook.md
 Helpers:
 
 ```bash
+scripts/check.sh                # local validation gate (authoritative)
 scripts/check-stale.sh          # read-only staleness report
 scripts/update-no-mistakes.sh   # bump the noMistakes tarball pin (Dependabot cannot)
 ```

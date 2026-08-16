@@ -1,7 +1,8 @@
 # Dependabot version updates for MetaCube.
 #
-# One targeted PR per dependency; every PR is built by
-# .github/workflows/ci.yml before it can merge. No scheduled workflow
+# One targeted PR per dependency. Every PR is validated locally with
+# scripts/check.sh before merge; CI (workflow_dispatch only) is an
+# optional fallback, not a required check. No scheduled workflow
 # opens PRs - Dependabot is the only bot here.
 #
 # What Dependabot does NOT cover (kept manual on purpose):
