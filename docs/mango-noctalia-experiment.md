@@ -46,26 +46,53 @@ Explicitly bounded to:
 Everything else is user-scope (config files in the home directory). greetd,
 boot, kernel params, systemd system units, and the Hyprland stack
 (`modules/nixos/hyprland.nix`, `home/hyprland.lua`, Waybar/SwayNC/Fuzzel/
-Hyprlock/Hypridle/Hyprpaper) are untouched and stay installed-but-inert for
-the Hyprland session. `programs.noctalia.recommendedServices` is deliberately
-not enabled (would add upower/power-profiles-daemon machine-globally).
+Hyprlock/Hypridle/Hyprpaper) are untouched and stay installed. The retained
+Hyprland user services are conditioned on `XDG_CURRENT_DESKTOP` and are
+skipped for the manual Mango session, while remaining active for Hyprland.
+`programs.noctalia.recommendedServices` is deliberately not enabled (would add
+upower/power-profiles-daemon machine-globally).
 
-## Entering the experiment session (Phase 1)
+## Phase 0 build boundary
 
-1. Flip the flag, commit on a feature branch, and validate:
-   `sudo nixos-rebuild build --flake .#metacube` (build-only; switch only
-   from the canonical `main` checkout per repo AGENTS.md).
-2. Rebuild/switch the Home Manager side (or the toplevel), then on an unused
-   VT (Ctrl+Alt+F2) log in as `linhnt` and run:
+This feature branch is build-only. Do not run `nixos-rebuild test` or
+`nixos-rebuild switch`, activate Home Manager, or enter the Mango session from
+this unmerged branch. Keep the host flag false while validating the default
+state:
 
-   ```sh
-   exec uwsm start -e -D mango mango.desktop
-   ```
+```sh
+sudo nixos-rebuild build --flake .#metacube
+```
 
-   UWSM loads its `mango` plugin and exports `MANGO_INSTANCE_SIGNATURE`;
-   Mango's config starts Noctalia via `exec-once`. Ctrl+Alt+F1 returns to
-   greetd/Hyprland untouched.
-3. Exit the session with `mmsg dispatch quit` (or Super+M).
+Build the flag-on state without editing files (lib.mkForce is required because
+the host sets the flag explicitly):
+
+```sh
+nix build --impure --expr 'let f = builtins.getFlake "path:'"$PWD"'"; in (f.nixosConfigurations.metacube.extendModules { modules = [ ({ lib, ... }: { metacube.experiments.mangoNoctalia.enable = lib.mkForce true; }) ]; }).config.system.build.toplevel'
+```
+
+## Captain-approved Phase 1 entry
+
+Only after the change is merged, the captain approves activation, and the
+command is run from the canonical `main` checkout with the approved flag-on
+configuration, may the machine be activated:
+
+```sh
+sudo nixos-rebuild switch --flake .#metacube
+```
+
+Then, on an unused VT (Ctrl+Alt+F2), log in as `linhnt` and run the following
+manual opt-in command. This command is also captain-approved experiment
+activity; it must not be wired into greetd:
+
+```sh
+exec uwsm start -e -D mango mango.desktop
+```
+
+`-e -D mango` gives the UWSM session the compositor marker used to keep the
+Hyprland fallback services out of the Mango session. UWSM loads its `mango`
+plugin, Mango exports `MANGO_INSTANCE_SIGNATURE` to its clients, and Mango's
+config starts Noctalia via `exec-once`. Ctrl+Alt+F1 returns to the untouched
+greetd/Hyprland session. Exit with `mmsg dispatch quit` (or Super+M).
 
 ## Validation
 
@@ -73,7 +100,10 @@ not enabled (would add upower/power-profiles-daemon machine-globally).
 # offline: validates the generated config files (no session needed)
 ~/nixos-config/scripts/validate-mango-session.sh --static
 
-# in-session checklist
+# stable-session baseline, before entering Mango
+scripts/validate-mango-session.sh --footprint-only
+
+# Mango in-session checklist
 scripts/validate-mango-session.sh --launch-apps --footprint
 
 # gate probes (interactive; these are the upstream-bug probes)
@@ -81,14 +111,9 @@ scripts/validate-mango-session.sh --lock-loop 20      # Noctalia #3848
 scripts/validate-mango-session.sh --suspend-probe     # Mango #1017
 ```
 
+The switch, Mango entry, lock loop, and suspend probe require captain approval.
 Build gates per repo AGENTS.md: `sudo nixos-rebuild build --flake
-.#metacube` must stay green at every step. To build the flag-on state without
-editing files (lib.mkForce is required because the host sets the flag
-explicitly):
-
-```sh
-nix build --impure --expr 'let f = builtins.getFlake "path:'"$PWD"'"; in (f.nixosConfigurations.metacube.extendModules { modules = [ ({ lib, ... }: { metacube.experiments.mangoNoctalia.enable = lib.mkForce true; }) ]; }).config.system.build.toplevel'
-```
+.#metacube` must stay green at every step.
 
 ## Success criteria (all must hold to continue past Phase 1)
 
@@ -102,8 +127,9 @@ nix build --impure --expr 'let f = builtins.getFlake "path:'"$PWD"'"; in (f.nixo
    Thunar, Zathura; screen sharing/recording tested once (Mango #1162).
 5. Workspace widget reflects Mango tags correctly (mango-ipc backend).
 6. No regressions in the stable Hyprland session.
-7. Footprint recorded: Noctalia total RSS vs Waybar+SwayNC+Fuzzel+Hyprlock+
-   Hypridle+Hyprpaper combined (`--footprint`).
+7. Footprint recorded: run `--footprint-only` in stable Hyprland and
+   `--footprint` in Mango; compare Noctalia total RSS with the combined
+   Waybar+SwayNC+Fuzzel+Hyprlock+Hypridle+Hyprpaper baseline.
 8. Branch stays buildable at every step.
 
 ## Failure criteria (stop and roll back)
@@ -116,10 +142,11 @@ nix build --impure --expr 'let f = builtins.getFlake "path:'"$PWD"'"; in (f.nixo
 
 ## Rollback
 
-One-line flip: set the flag back to `false`, rebuild. Optionally remove the
-home config files (`~/.config/mango/`, `~/.config/noctalia/`) or restore the
-previous Home Manager generation. The stable session was never touched, so
-no system restore is involved.
+One-line flip: set the flag back to `false`, then, with captain approval, run
+`sudo nixos-rebuild switch --flake .#metacube` from the canonical `main`
+checkout. Optionally remove the home config files (`~/.config/mango/`,
+`~/.config/noctalia/`) or restore the previous Home Manager generation. The
+stable session was never touched, so no system restore is involved.
 
 ## Upstream watchlist (open at Phase 0, 2026-08-16)
 

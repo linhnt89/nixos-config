@@ -26,6 +26,22 @@
 let
   cfg = config.metacube.experiments.mangoNoctalia;
 
+  fallbackServices = [
+    "waybar"
+    "swaync"
+    "cliphist"
+    "hyprpolkitagent"
+    "hypridle"
+    "hyprpaper"
+  ];
+
+  fallbackServiceCondition = pkgs.writeShellScript "metacube-hyprland-service-condition" ''
+    case ":''${XDG_CURRENT_DESKTOP:-}:" in
+      *:mango:*) exit 1 ;;
+      *) exit 0 ;;
+    esac
+  '';
+
   theme = import ../theme.nix;
   c = theme.colors;
 
@@ -310,6 +326,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    systemd.user.services = lib.genAttrs fallbackServices (_: {
+      Service.ExecCondition = fallbackServiceCondition;
+    });
+
     xdg.configFile."mango/config.conf".text = mangoConfig;
 
     xdg.configFile."noctalia/config.toml".text = noctaliaConfig;
