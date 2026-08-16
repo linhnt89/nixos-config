@@ -165,6 +165,31 @@ noctalia_ipc_checks() {
   fi
 }
 
+noctalia_lock_state() {
+  local status
+
+  status="$(noctalia msg status 2>&1)" || {
+    printf '%s\n' "$status" >&2
+    return 1
+  }
+  jq -er 'if (.locked | type) == "boolean" then (.locked | tostring) else error("Noctalia status has no boolean locked field") end' <<<"$status"
+}
+
+check_noctalia_lock_state() {
+  local expected="$1"
+  local state
+
+  if ! state="$(noctalia_lock_state 2>&1)"; then
+    bad "Noctalia lock state query failed (expected $expected): $state"
+    return 1
+  fi
+  if [ "$state" != "$expected" ]; then
+    bad "Noctalia lock state is $state, expected $expected"
+    return 1
+  fi
+  return 0
+}
+
 lock_probe() { # count
   local count="$1"
   local i
@@ -172,19 +197,29 @@ lock_probe() { # count
   section "Lock/unlock probe (Noctalia #3848, $count cycles)"
 
   require_tool "noctalia" "noctalia" || return
+  require_tool "jq lock-state parser" "jq" || return
 
   echo "      The lock screen needs your password each round."
   for i in $(seq 1 "$count"); do
-    printf '      cycle %s/%s: locking... ' "$i" "$count"
-    noctalia msg session lock >/dev/null 2>&1
-    echo "unlock it now, then press Enter"
-    read -r _
-    if noctalia msg status >/dev/null 2>&1; then
-      echo "      cycle $i ok"
-    else
-      bad "shell did not respond after unlock at cycle $i"
+    printf '      cycle %s/%s: locking...\n' "$i" "$count"
+    if ! noctalia msg session lock >/dev/null 2>&1; then
+      bad "Noctalia lock command failed at cycle $i"
       return
     fi
+    sleep 1
+    if ! check_noctalia_lock_state true; then
+      return
+    fi
+    echo "      locked; unlock it now, then press Enter"
+    if ! read -r _; then
+      bad "unlock confirmation input failed at cycle $i"
+      return
+    fi
+    sleep 1
+    if ! check_noctalia_lock_state false; then
+      return
+    fi
+    echo "      cycle $i ok"
   done
   ok "lock/unlock x$count without hangs"
 }
@@ -194,13 +229,31 @@ suspend_probe() {
 
   require_tool "noctalia" "noctalia" || return
   require_tool "systemctl" "systemctl" || return
+  require_tool "jq lock-state parser" "jq" || return
 
   echo "      Locking, then suspending for ~20s; wake up and unlock manually."
-  noctalia msg session lock >/dev/null 2>&1
+  if ! noctalia msg session lock >/dev/null 2>&1; then
+    bad "Noctalia lock command failed before suspend"
+    return
+  fi
   sleep 1
-  systemctl suspend
+  if ! check_noctalia_lock_state true; then
+    return
+  fi
+
+  if ! systemctl suspend >/dev/null 2>&1; then
+    bad "systemctl suspend failed"
+    return
+  fi
   echo "      Resumed. Unlock the screen, then press Enter"
-  read -r _
+  if ! read -r _; then
+    bad "unlock confirmation input failed after resume"
+    return
+  fi
+  sleep 1
+  if ! check_noctalia_lock_state false; then
+    return
+  fi
 
   local out
   out="$(mmsg get version 2>&1)" || {
