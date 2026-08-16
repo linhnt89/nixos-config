@@ -94,6 +94,10 @@ process, no other same-user graphical session, and no active fallback service:
 scripts/validate-mango-session.sh --preflight
 ```
 
+The preflight refuses to run from inside a graphical session (exit 2 with a
+fresh-VT message); if that happens, the Hyprland login is still active — log
+out completely and rerun from the fresh VT.
+
 Only then run the following manual opt-in command. This command is also
 captain-approved experiment activity; it must not be wired into greetd:
 

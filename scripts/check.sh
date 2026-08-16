@@ -77,6 +77,13 @@ for f in scripts/*.sh; do
   echo "    ok $f"
 done
 
+echo '  mango preflight regression tests:'
+if ! scripts/test-mango-preflight.sh; then
+  echo "    fail: scripts/test-mango-preflight.sh" >&2
+  exit 1
+fi
+echo "    ok scripts/test-mango-preflight.sh"
+
 yaml_parser=""
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
   yaml_parser="python3"
