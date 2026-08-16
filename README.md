@@ -604,10 +604,22 @@ Do not change them merely because NixOS or Home Manager is upgraded to a newer r
 
 ## Updating dependencies
 
-The flake currently pins Nixpkgs and Home Manager in:
+Dependency upgrades are deliberate, reviewed changes: Dependabot opens
+one targeted PR per input (Nix and npm weekly, GitHub Actions monthly),
+CI builds every PR, and nothing is activated automatically. The full
+procedure — targeted updates, build/verify/switch, rollback, the
+no-mistakes daemon restart, and the canonical-clean-checkout rule — is
+in:
 
 ```text
-flake.lock
+docs/updates-runbook.md
+```
+
+Helpers:
+
+```bash
+scripts/check-stale.sh          # read-only staleness report
+scripts/update-no-mistakes.sh   # bump the noMistakes tarball pin (Dependabot cannot)
 ```
 
 Inspect the current inputs with:
@@ -616,13 +628,9 @@ Inspect the current inputs with:
 nix flake metadata
 ```
 
-Show the flake outputs with:
-
-```bash
-nix flake show
-```
-
-Dependency upgrades should be done deliberately and committed together with the resulting `flake.lock` changes.
+Dependency upgrades must be committed together with the resulting
+`flake.lock` changes. Never bump `stateVersion` during an upgrade (see
+"State versions" above).
 
 ## Git workflow
 

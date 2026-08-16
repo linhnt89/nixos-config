@@ -1,0 +1,92 @@
+# CI for MetaCube.
+#
+# build: evaluates the flake and builds the NixOS toplevel so every
+#   dependency PR proves itself before merge. Runs on pull requests
+#   and on pushes to main.
+# stale: weekly (and manual) staleness report via scripts/check-stale.sh.
+#   It reports only - it never opens update PRs (Dependabot owns those)
+#   and it never builds or activates the system. A red run means stale
+#   inputs or tool pins; the summary holds the table.
+#
+# Least privilege: read-only contents permission, no secrets beyond the
+# default GITHUB_TOKEN used for nix's github access-tokens.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Weekly staleness backstop: Monday 06:30 Asia/Ho_Chi_Minh (UTC+7).
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: flake check + toplevel build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # GitHub's standard Ubuntu image has a small guaranteed disk budget and
+      # ships unused SDK/toolchain caches. Reclaim only known non-Nix paths;
+      # never touch /nix/store, which holds the build inputs and outputs.
+      - name: Reclaim runner disk
+        run: |
+          set -euo pipefail
+          echo 'Disk before cleanup:'
+          df -h / /mnt 2>/dev/null || df -h /
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache
+          if [[ -n "${AGENT_TOOLSDIRECTORY:-}" ]]; then
+            sudo rm -rf -- "$AGENT_TOOLSDIRECTORY"
+          fi
+          sudo docker system prune -af --volumes || true
+          echo 'Disk after cleanup:'
+          df -h / /mnt 2>/dev/null || df -h /
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: nix flake check
+        run: nix flake check
+
+      - name: Build NixOS toplevel
+        run: nix build .#nixosConfigurations.metacube.config.system.build.toplevel
+
+  stale:
+    name: Staleness report
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Staleness report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          ./scripts/check-stale.sh > /tmp/stale-report.txt 2>&1
+          code=$?
+          set -e
+          {
+            echo '## Staleness report'
+            echo
+            echo '```text'
+            cat /tmp/stale-report.txt
+            echo '```'
+            echo
+            echo "exit code: $code (0 = up to date, 1 = stale inputs or tool pins)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
