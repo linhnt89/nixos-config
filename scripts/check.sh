@@ -91,6 +91,13 @@ if ! scripts/test-mango-probe.sh; then
 fi
 echo "    ok scripts/test-mango-probe.sh"
 
+echo '  mango blueman tray-applet regression tests:'
+if ! scripts/test-mango-blueman.sh; then
+  echo "    fail: scripts/test-mango-blueman.sh" >&2
+  exit 1
+fi
+echo "    ok scripts/test-mango-blueman.sh"
+
 yaml_parser=""
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
   yaml_parser="python3"

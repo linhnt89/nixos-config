@@ -15,7 +15,9 @@
 #
 # The stable Hyprland session never reads these files; they only exist in the
 # home directory for the manual opt-in Mango session
-# (`exec uwsm start -e -D mango mango.desktop` on an unused VT).
+# (`exec uwsm start -e -D mango mango.desktop` on an unused VT). The one
+# exception is the blueman autostart shadow below, which the systemd user
+# manager reads in both sessions (it is behaviorally neutral in Hyprland).
 #
 # Versions this configuration is generated for (pinned nixpkgs-unstable):
 #   - mango 0.15.6     (config keys verified against assets/config.conf)
@@ -40,6 +42,48 @@ let
       *:mango:*) exit 1 ;;
       *) exit 0 ;;
     esac
+  '';
+
+  # Legacy blueman tray-applet suppression -----------------------------------
+  #
+  # `services.blueman.enable` (modules/nixos/desktop.nix) starts the legacy
+  # blueman tray applet from its XDG autostart entry, not from a systemd unit:
+  # the blueman package ships no share/systemd/user unit (the NixOS module
+  # only adds systemPackages/dbus/systemd.packages, the last carrying the
+  # system-scope blueman-mechanism service), and NixOS aggregates its
+  # etc/xdg/autostart/blueman.desktop into /etc/xdg/autostart via
+  # environment.pathsToLink. Both uwsm sessions (Hyprland and Mango) run the
+  # entry through systemd's built-in systemd-xdg-autostart-generator, which
+  # generates the user unit app-blueman@autostart.service (wanted by
+  # xdg-desktop-autostart.target, pulled in by uwsm's
+  # wayland-session-xdg-autostart@.target).
+  #
+  # This file shadows the system entry with the same file name (the XDG
+  # autostart search order puts ~/.config/autostart before /etc/xdg/autostart
+  # and the generator keeps the first occurrence of a name), adding
+  # `NotShowIn=mango`. systemd >= 260 converts OnlyShowIn/NotShowIn into an
+  # ExecCondition= evaluated at service start, in the session environment
+  # (uwsm injects EnvironmentFile=%t/uwsm/env_session.conf into
+  # app-@autostart.service), so the applet is skipped exactly when
+  # XDG_CURRENT_DESKTOP contains mango — the same per-session boundary as
+  # fallbackServiceCondition — and still starts in Hyprland. This deliberately
+  # avoids guessing any unit name in our config and does not disable the
+  # general Noctalia `tray` widget: other tray applications are unaffected.
+  #
+  # blueman-manager (Waybar/Noctalia on-click) and BlueZ/hardware support are
+  # untouched; only the duplicate tray applet is suppressed in Mango, where
+  # Noctalia's built-in Bluetooth widget is the UI. With the flag off this
+  # file does not exist and the system entry behaves exactly as before.
+
+  bluemanAutostartEntry = ''
+    [Desktop Entry]
+    Name=Blueman Applet
+    Comment=Blueman Bluetooth Manager
+    Exec=blueman-applet
+    Icon=blueman
+    Terminal=false
+    Type=Application
+    NotShowIn=mango
   '';
 
   theme = import ../theme.nix;
@@ -335,5 +379,9 @@ in
     xdg.configFile."noctalia/config.toml".text = noctaliaConfig;
 
     xdg.configFile."noctalia/palettes/MetaCube.json".text = noctaliaPaletteJson;
+
+    # Shadow the system XDG autostart entry so the legacy blueman tray applet
+    # is skipped in Mango only (see the lifecycle note above).
+    xdg.configFile."autostart/blueman.desktop".text = bluemanAutostartEntry;
   };
 }
