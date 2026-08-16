@@ -24,7 +24,8 @@
 #   --launch-apps     launch kitty/Firefox/XWayland/mpv/Thunar/Zathura and
 #                     verify windows, XWayland, and mpv MPRIS via playerctl
 #   --preflight       verify that no same-user Hyprland session or fallback
-#                     service is still active before starting Mango
+#                     service is still active before starting Mango; must run
+#                     from a fresh VT (rejects graphical sessions with exit 2)
 #   --footprint       print RSS of the experiment and fallback process sets
 #   --footprint-only  print only the process footprint (for a stable baseline)
 #
@@ -87,7 +88,12 @@ sequential_session_checks() {
 
   if have "pgrep"; then
     local hyprland_pids
-    if hyprland_pids="$(pgrep -u "$uid" -x Hyprland 2>/dev/null)"; then
+    # Hyprland 0.55.x renames itself to .Hyprland-wrapped (comm truncated to
+    # .Hyprland-wrapp), so comm-name matching can never find the running
+    # compositor. Match the compositor argv instead: '/bin/Hyprland' is
+    # narrow enough to skip the start-hyprland wrapper (lowercase argv) and
+    # uwsm helpers.
+    if hyprland_pids="$(pgrep -u "$uid" -f '/bin/Hyprland' 2>/dev/null)"; then
       bad "Hyprland is still running for $user_name (PIDs: $hyprland_pids)"
     else
       ok "no Hyprland compositor is running for $user_name"
@@ -169,6 +175,39 @@ sequential_session_checks() {
   else
     skip "systemctl not found; fallback services not checked"
   fi
+}
+
+preflight_context_guard() {
+  # --preflight must run from a fresh VT, never inside the graphical session
+  # it is checking. The sequential-session loop exempts the current session
+  # (correct for a fresh VT, where it is non-graphical); without this guard a
+  # run from inside the live Hyprland/X11/Wayland session would silently
+  # exempt that session and report a false clean slate.
+  local current_session="${XDG_SESSION_ID:-}"
+
+  if [ -z "$current_session" ] || ! have "loginctl"; then
+    return 0
+  fi
+
+  local session_type session_desktop session_desc
+  session_type="$(loginctl show-session "$current_session" -p Type --value 2>/dev/null || true)"
+  session_desktop="$(loginctl show-session "$current_session" -p Desktop --value 2>/dev/null || true)"
+
+  case "$session_type" in
+    wayland|x11) ;;
+    *)
+      case "${session_desktop,,}" in
+        *hyprland*) ;;
+        *) return 0 ;;
+      esac
+      ;;
+  esac
+
+  session_desc="$session_type"
+  [ -n "$session_desktop" ] && session_desc="$session_desktop/$session_type"
+  echo "      --preflight must run from a fresh VT, not inside a graphical session (current session $current_session is $session_desc)" >&2
+  echo "      Log out of the graphical session completely, then rerun from a fresh VT (Ctrl+Alt+F2)." >&2
+  exit 2
 }
 
 section() {
@@ -902,6 +941,7 @@ done
 printf 'MangoWM + Noctalia validation (%s)\n' "$(date -Is)"
 
 if [ "$SESSION_PREFLIGHT" = "1" ]; then
+  preflight_context_guard
   sequential_session_checks
 elif [ "$STATIC" = "1" ]; then
   static_checks "$CONFIG_DIR"
