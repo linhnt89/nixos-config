@@ -755,7 +755,7 @@ screen_share_probe() {
   section "Screen sharing (Mango #1162)"
 
   # Non-interactive probe: the xdg-desktop-portal ScreenCast interface must
-  # be reachable and served by the wlr backend wired by programs.mango.
+  # be reachable and served by the wlr backend configured by this experiment.
   # The actual OBS share session stays a manual probe.
   if have "busctl"; then
     local version

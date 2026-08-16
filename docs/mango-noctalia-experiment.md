@@ -23,7 +23,7 @@ Module layout (all gated by that flag; inert when off):
 
 | File | Role |
 |---|---|
-| `modules/nixos/mango-experiment.nix` | flag definition, `programs.mango`/`programs.noctalia` (pinned unstable packages), greetd no-change guard assertion, bridges the flag into Home Manager |
+| `modules/nixos/mango-experiment.nix` | flag definition, pinned unstable Mango/Noctalia packages, portal/session wiring, greetd no-change guard assertion, and the Home Manager bridge |
 | `home/modules/experiment.nix` | generates `~/.config/mango/config.conf`, `~/.config/noctalia/config.toml` and `~/.config/noctalia/palettes/MetaCube.json` from `home/theme.nix` design tokens |
 | `scripts/validate-mango-session.sh` | Phase-1 validation checklist (offline `--static` mode + in-session probes) |
 
@@ -36,11 +36,11 @@ uwsm 0.26.6 (ships the `mango` plugin).
 
 Explicitly bounded to:
 
-1. `programs.mango.enable` — additive package + xdg-desktop-portal wiring
-   (wlr/gtk) + display-manager session entry.
-2. `programs.noctalia.enable` — additive package only (`systemd.enable =
-   false`; Noctalia is started by Mango's `exec-once`). No PAM change needed
-   (Noctalia uses the stock `login` PAM service).
+1. `environment.systemPackages` — additive Mango and Noctalia packages from
+   the pinned `nixpkgs-unstable` input. Noctalia has no systemd unit here; it
+   is started by Mango's `exec-once`.
+2. `xdg.portal` wiring (wlr/gtk) and a display-manager session entry for
+   Mango.
 3. A build-time assertion that greetd's default session command does not
    mention mango.
 
@@ -53,8 +53,8 @@ skipped for the manual Mango session, while remaining active for Hyprland.
 That condition is only a fallback guard; it does not isolate two concurrent
 sessions. Log out of Hyprland completely before starting Mango, and use the
 validation script's `--preflight` check on the fresh VT login.
-`programs.noctalia.recommendedServices` is deliberately not enabled (would add
-upower/power-profiles-daemon machine-globally).
+No additional Noctalia recommended services are added, avoiding
+machine-global `upower`/`power-profiles-daemon` dependencies.
 
 ## Phase 0 build boundary
 
@@ -94,8 +94,8 @@ process, no other same-user graphical session, and no active fallback service:
 scripts/validate-mango-session.sh --preflight
 ```
 
-Only then run the following manual opt-in command. This command is also captain-approved
-experiment activity; it must not be wired into greetd:
+Only then run the following manual opt-in command. This command is also
+captain-approved experiment activity; it must not be wired into greetd:
 
 ```sh
 exec uwsm start -e -D mango mango.desktop
@@ -117,7 +117,7 @@ Hyprland again. Exit with `mmsg dispatch quit` (or Super+M).
 # stable-session baseline, before entering Mango
 scripts/validate-mango-session.sh --footprint-only
 
-# Mango in-session checklist (includes tag/widget and app backend probes)
+# Mango in-session checklist (reload/monitor, tag/widget, and app probes)
 scripts/validate-mango-session.sh --launch-apps --footprint
 
 # gate probes (interactive; these are the upstream-bug probes)

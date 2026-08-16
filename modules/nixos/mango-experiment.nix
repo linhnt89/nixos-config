@@ -19,12 +19,11 @@
 #   - xdg-desktop-portal wiring (wlr/gtk portals) + a display-manager session
 #     entry for mango
 #
-# The nixpkgs modules `programs.mango` / `programs.noctalia` exist only in
-# nixpkgs-unstable (nixos/modules/programs/wayland/{mango,noctalia}.nix at
-# rev f13ff45), while this evaluation uses the stable nixpkgs input, so their
-# (small) effect is replicated inline here; the wiring below mirrors those
-# upstream modules verbatim. Noctalia gets no systemd unit: it is started by
-# Mango's exec-once.
+# The Mango NixOS module exists only in nixpkgs-unstable
+# (nixos/modules/programs/wayland/mango.nix at rev f13ff45), while this
+# evaluation uses the stable nixpkgs input, so the required Mango package,
+# portal and session wiring is replicated inline here. Noctalia is added as a
+# package only; it gets no systemd unit and is started by Mango's exec-once.
 #
 # greetd, boot, Hyprland and the stable session are untouched by construction;
 # the guard assertion below fails the build if a mango session ever leaks into
