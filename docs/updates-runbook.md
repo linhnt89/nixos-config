@@ -1,0 +1,192 @@
+# Updates runbook
+
+How dependency updates land in this repository, and how to take one from
+a merged PR to a verified running system. This is the authoritative
+procedure; the README section "Updating dependencies" is the short form.
+
+## Principles
+
+- **Updates are deliberate, reviewed, and build-verified.** Dependabot
+  opens targeted per-dependency PRs; CI builds every PR; nothing is
+  activated automatically, ever.
+- **Never self-update Nix-managed tools.** `no-mistakes update`,
+  `herdr update`, `treehouse update`, `pi update` and `npm install -g`
+  are the wrong path on this host: every tool is immutable in the Nix
+  store. Versions change only through this repository's flake/npm pins,
+  a rebuild, and (after approval) a switch.
+- **Never bump `stateVersion`** (`system.stateVersion` /
+  `home.stateVersion`, currently `26.05`) during an upgrade. They are
+  compatibility settings tied to the original installation. See the
+  NixOS wiki "When do I update stateVersion".
+
+## Update lanes
+
+| Lane | Pin | How it moves |
+| --- | --- | --- |
+| Stable system packages | `nixpkgs` input (`nixos-26.05`) | Dependabot `stable-lane` PR (grouped with home-manager + treehouse) or `nix flake update nixpkgs` |
+| Pi lane (unstable) | `nixpkgs-unstable` input | Dependabot individual PR or `nix flake update nixpkgs-unstable` |
+| Home Manager | `home-manager` (`release-26.05`, follows nixpkgs) | moves with `nixpkgs`; Dependabot |
+| Treehouse | `treehouse` (follows nixpkgs) | Dependabot |
+| Herdr | `herdr` tag (`v0.8.0`) | deliberate `flake.nix` ref edit (Dependabot can propose it) |
+| no-mistakes | tarball URL in `flake.nix` | `scripts/update-no-mistakes.sh` only (Dependabot cannot bump tarball inputs) |
+| Node CLIs | `home/firstmate/node-tools/package.json` + `package-lock.json` (exact pins) | Dependabot npm PR or `npm install --package-lock-only` |
+| CI actions | `.github/workflows/*` | Dependabot github-actions PR (monthly) |
+
+Notes:
+
+- Updating `nixpkgs` cascades to `home-manager` and `treehouse` (their
+  inputs follow ours) but **not** to `herdr` (pins its own nixpkgs) or
+  `noMistakes` (tarball).
+- `nixpkgs-unstable` is excluded from the `stable-lane` Dependabot group
+  on purpose: the Pi lane should only move when a Pi update is actually
+  wanted, not silently with every stable bump. Its individual Dependabot
+  PRs still require the normal review.
+- `templates/dev/flake.nix` pins `nixos-26.05` for project dev shells;
+  it is a separate surface, only touched at branch migrations.
+
+## Dependabot
+
+Config: `.github/dependabot.yml`. Weekly on Monday (Asia/Ho_Chi_Minh):
+nix and npm; monthly: GitHub Actions. Each PR is one targeted update.
+Review checklist for every Dependabot PR:
+
+1. CI `build` job is green (`nix flake check` + toplevel build).
+2. The diff touches only the intended input (`flake.lock`, possibly
+   `flake.nix` for ref rewrites) or the intended npm pins.
+3. `nixpkgs-unstable` PRs: confirm the Pi package change is wanted.
+4. Herdr ref PRs: skim the herdr changelog first; stay on stable tags.
+
+Dependabot does not touch the `noMistakes` tarball input; that is the
+script below. No other bot runs — do not add Renovate or a second PR
+automation, and do not let the scheduled staleness job open PRs.
+
+## Staleness reporting
+
+`scripts/check-stale.sh` reports stale inputs and tool pins. It is
+read-only: no mutations, no PRs, no lock writes.
+
+```bash
+scripts/check-stale.sh                # text table; exit 1 if anything is stale
+scripts/check-stale.sh --json         # machine-readable
+scripts/check-stale.sh --days 30      # looser age threshold
+scripts/check-stale.sh --skip-remote  # offline: age analysis only
+```
+
+CI runs it weekly (Monday 06:30) and on `workflow_dispatch` in the
+`stale` job. A red weekly run is the report — the table is in the job
+summary. It never opens PRs (Dependabot owns those) and never builds or
+activates the system.
+
+## Targeted manual updates
+
+```bash
+# Stable lane (one coherent diff):
+nix flake update nixpkgs
+
+# Pi lane only:
+nix flake update nixpkgs-unstable
+
+# Herdr tag bump (e.g. v0.9.0): edit flake.nix first, then re-lock:
+#   herdr.url = "github:herdrdev/herdr/v0.9.0";
+nix flake lock --update-input herdr
+
+# Node CLIs: let Dependabot do it, or regenerate the lock (exact pins;
+# integrity hashes live in package-lock.json, so Nix needs no hashes):
+cd home/firstmate/node-tools
+npm install --package-lock-only
+
+# no-mistakes (stable only; refuses malformed/prerelease/downgrade/below-floor):
+scripts/update-no-mistakes.sh            # latest stable
+scripts/update-no-mistakes.sh v1.48.0    # explicit version
+scripts/update-no-mistakes.sh --dry-run  # preview only
+```
+
+After any lock change, commit `flake.lock` together with the change —
+never a bare lock refresh. Feature branches validate with
+`sudo nixos-rebuild build --flake .#metacube` per `AGENTS.md`.
+
+## From merged update to a running system
+
+Activation is **manual and post-merge only**, and only from the
+canonical checkout:
+
+1. **Refresh the canonical checkout.** `~/nixos-config` (the clone Pi
+   reads) must be on a clean `main` before building. Fetch and
+   fast-forward only; never `git clean` or hard-reset it — it holds
+   runtime-owned files (`home/pi/settings.json` is seeded from it once).
+   If it is dirty, reconcile the local edits before touching anything.
+2. **Build** (does not activate):
+   ```bash
+   cd ~/nixos-config
+   sudo nixos-rebuild build --flake .#metacube
+   ```
+3. **Verify** before switching:
+   ```bash
+   systemctl --failed
+   systemctl --user --failed
+   no-mistakes doctor
+   ```
+   and the tool-version checks below, plus anything specific to the
+   change (e.g. `hyprctl configerrors` after desktop changes).
+4. **Switch only after explicit approval** (captain/firstmate):
+   ```bash
+   sudo nixos-rebuild switch --flake .#metacube
+   ```
+   CI and the staleness report never switch, and never run this step.
+
+After a no-mistakes bump, **firstmate restarts the shared
+no-mistakes daemon** (the systemd user unit points at the old store
+path until then; after ~14 days the old path would be GC'd, breaking
+the unit). Crewmates never restart the daemon — it is one instance
+serving every lane. Same rule for any tool whose running service reads
+the Nix store path (e.g. herdr sessions).
+
+## Tool-version checks
+
+```bash
+no-mistakes doctor                       # daemon + gate validation
+no-mistakes --version                    # vs firstmate NO_MISTAKES_MIN (fm-bootstrap.sh)
+gh-axi --version && chrome-devtools-axi --version
+lavish-axi --version && tasks-axi --version && quota-axi --version
+herdr --version && treehouse --version && pi --version
+```
+
+`no-mistakes --version` may print its own update banner; the Nix
+install is updated via this repo, not `no-mistakes update`. If the
+banner is noise, `NO_MISTAKES_NO_UPDATE_CHECK=1` suppresses the
+background check. The repo pins must stay above firstmate's floor
+constants (see `fm-bootstrap.sh`); check that after every firstmate
+update and after every npm pin bump.
+
+## Rollback
+
+```bash
+sudo nixos-rebuild switch --rollback     # back to the previous generation
+```
+
+Or pick a previous generation from the systemd-boot menu at boot.
+Because every update is its own generation, a bad bump is reverted by
+switching back — another reason update PRs stay per-input and
+build-verified. Rollback never touches `stateVersion`.
+
+## Separate update paths (not this repo)
+
+- **Firstmate itself**: git-level fast-forward update via
+  `/updatefirstmate` → `bin/fm-update.sh`. Independent of Nix; keep the
+  npm pins above the new floor constants afterwards.
+- **Pi**: packaged by `nixpkgs-unstable`; bumped through the Pi lane.
+  `pi update` is for non-Nix installs. Pi's runtime data
+  (`~/.pi/agent/…`) is outside Git — see `docs/pi-settings-boundary.md`.
+- **Herdr / Treehouse / no-mistakes**: Nix-managed via this repo; their
+  self-update commands are documented but not used here.
+
+## NixOS branch migration (26.11)
+
+NixOS 26.05 is supported until 2026-12-31. Moving to 26.11 ("Zokor",
+expected ~Nov 2026) is a deliberate event, not a routine bump:
+
+1. Edit refs: `nixpkgs` → `nixos-26.11`, `home-manager` →
+   `release-26.11`, and `templates/dev/flake.nix`.
+2. Read `rl-2611` release notes for module changes.
+3. Build-verify per branch as usual, switch only after approval.
+4. **Keep `stateVersion` at `26.05`.**

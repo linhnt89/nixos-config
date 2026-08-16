@@ -1,0 +1,61 @@
+# Dependabot version updates for MetaCube.
+#
+# One targeted PR per dependency; every PR is built by
+# .github/workflows/ci.yml before it can merge. No scheduled workflow
+# opens PRs - Dependabot is the only bot here.
+#
+# What Dependabot does NOT cover (kept manual on purpose):
+#   - noMistakes: tarball-URL input, unsupported by the nix ecosystem;
+#     bump it with scripts/update-no-mistakes.sh.
+#   - nixpkgs-unstable: excluded from the stable-lane group so the Pi
+#     lane still moves deliberately. It can still receive its own
+#     individual PRs; review those like any other update.
+version: 2
+updates:
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "nix"
+    groups:
+      # The coherent stable family moves as one PR: updating nixpkgs
+      # cascades to home-manager and treehouse (follows), so their
+      # revisions must stay consistent in the same diff.
+      stable-lane:
+        patterns:
+          - "nixpkgs"
+          - "home-manager"
+          - "treehouse"
+        exclude-patterns:
+          - "nixpkgs-unstable"
+    ignore:
+      # Tarball-URL inputs cannot be bumped by Dependabot; the helper
+      # script owns this pin (see scripts/update-no-mistakes.sh).
+      - dependency-name: "noMistakes"
+
+  - package-ecosystem: "npm"
+    directory: "/home/firstmate/node-tools"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:15"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "node-tools"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
