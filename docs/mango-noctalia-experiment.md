@@ -3,7 +3,8 @@
 Bounded, parallel-opt-in desktop experiment on MetaCube: **MangoWM** as
 compositor with **Noctalia v5** owning bar, notifications, launcher, OSD,
 lock screen, wallpaper and settings. The stable Hyprland session, greetd and
-boot are untouched; Mango is entered manually on an unused VT.
+boot are untouched; Mango is entered manually on an unused VT. Same-user
+Hyprland and Mango sessions are sequential, never concurrent.
 
 This document is the runbook for the experiment. The original research is the
 scout report (`nixos-mangowm-noctalia-scout`); the decisions gating later
@@ -49,6 +50,9 @@ boot, kernel params, systemd system units, and the Hyprland stack
 Hyprlock/Hypridle/Hyprpaper) are untouched and stay installed. The retained
 Hyprland user services are conditioned on `XDG_CURRENT_DESKTOP` and are
 skipped for the manual Mango session, while remaining active for Hyprland.
+That condition is only a fallback guard; it does not isolate two concurrent
+sessions. Log out of Hyprland completely before starting Mango, and use the
+validation script's `--preflight` check on the fresh VT login.
 `programs.noctalia.recommendedServices` is deliberately not enabled (would add
 upower/power-profiles-daemon machine-globally).
 
@@ -80,9 +84,18 @@ configuration, may the machine be activated:
 sudo nixos-rebuild switch --flake .#metacube
 ```
 
-Then, on an unused VT (Ctrl+Alt+F2), log in as `linhnt` and run the following
-manual opt-in command. This command is also captain-approved experiment
-activity; it must not be wired into greetd:
+Before starting Mango, end the Hyprland login completely. Log out of
+Hyprland and wait for greetd to return; do not merely switch away from it or
+leave it running on another VT. On the fresh unused VT (Ctrl+Alt+F2), log in
+as `linhnt`, run the preflight check, and require it to report no Hyprland
+process, no other same-user graphical session, and no active fallback service:
+
+```sh
+scripts/validate-mango-session.sh --preflight
+```
+
+Only then run the following manual opt-in command. This command is also captain-approved
+experiment activity; it must not be wired into greetd:
 
 ```sh
 exec uwsm start -e -D mango mango.desktop
@@ -91,8 +104,9 @@ exec uwsm start -e -D mango mango.desktop
 `-e -D mango` gives the UWSM session the compositor marker used to keep the
 Hyprland fallback services out of the Mango session. UWSM loads its `mango`
 plugin, Mango exports `MANGO_INSTANCE_SIGNATURE` to its clients, and Mango's
-config starts Noctalia via `exec-once`. Ctrl+Alt+F1 returns to the untouched
-greetd/Hyprland session. Exit with `mmsg dispatch quit` (or Super+M).
+config starts Noctalia via `exec-once`. Ctrl+Alt+F1 must show greetd rather
+than an already-running Hyprland session; leave Mango before starting
+Hyprland again. Exit with `mmsg dispatch quit` (or Super+M).
 
 ## Validation
 
@@ -103,7 +117,7 @@ greetd/Hyprland session. Exit with `mmsg dispatch quit` (or Super+M).
 # stable-session baseline, before entering Mango
 scripts/validate-mango-session.sh --footprint-only
 
-# Mango in-session checklist
+# Mango in-session checklist (includes tag/widget and app backend probes)
 scripts/validate-mango-session.sh --launch-apps --footprint
 
 # gate probes (interactive; these are the upstream-bug probes)
@@ -129,7 +143,8 @@ Build gates per repo AGENTS.md: `sudo nixos-rebuild build --flake
 6. No regressions in the stable Hyprland session.
 7. Footprint recorded: run `--footprint-only` in stable Hyprland and
    `--footprint` in Mango; compare Noctalia total RSS with the combined
-   Waybar+SwayNC+Fuzzel+Hyprlock+Hypridle+Hyprpaper baseline.
+   Waybar+SwayNC+Fuzzel+Hyprlock+Hypridle+Hyprpaper baseline. The result is
+   non-comparable until all six fallback processes are present and measured.
 8. Branch stays buildable at every step.
 
 ## Failure criteria (stop and roll back)

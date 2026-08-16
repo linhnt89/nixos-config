@@ -22,8 +22,10 @@
 #                     unlock manually each round (N=20 for the gate probe)
 #   --suspend-probe   lock, suspend, verify the session survives resume
 #                     (Mango #1017); the machine actually suspends
-#   --launch-apps     launch kitty/firefox/mpv/thunar/zathura and verify windows
-#                     appear via mmsg
+#   --launch-apps     launch kitty/Firefox/XWayland/mpv/Thunar/Zathura and
+#                     verify windows, XWayland, and mpv MPRIS via playerctl
+#   --preflight       verify that no same-user Hyprland session or fallback
+#                     service is still active before starting Mango
 #   --footprint       print RSS of the experiment and fallback process sets
 #   --footprint-only  print only the process footprint (for a stable baseline)
 #
@@ -77,6 +79,99 @@ require_tool() { # name binary
   return 1
 }
 
+sequential_session_checks() {
+  section "Sequential-session boundary"
+
+  local user_name="${USER:-$(id -un)}"
+  local uid
+  uid="$(id -u)"
+
+  if have "pgrep"; then
+    local hyprland_pids
+    if hyprland_pids="$(pgrep -u "$uid" -x Hyprland 2>/dev/null)"; then
+      bad "Hyprland is still running for $user_name (PIDs: $hyprland_pids)"
+    else
+      ok "no Hyprland compositor is running for $user_name"
+    fi
+  else
+    skip "pgrep not found; Hyprland process not checked"
+  fi
+
+  if have "loginctl"; then
+    local current_session="${XDG_SESSION_ID:-}"
+    local session_list
+    local session_id session_uid session_user session_seat session_tty
+    local session_type session_desktop
+    local other_graphical=0
+    local session_inspection_failed=0
+
+    if [ -z "$current_session" ]; then
+      skip "XDG_SESSION_ID is unavailable; same-user session list not checked"
+    elif ! session_list="$(loginctl list-sessions --no-legend --no-pager 2>/dev/null)"; then
+      skip "loginctl could not list sessions; same-user session list not checked"
+    else
+      while read -r session_id session_uid session_user session_seat session_tty; do
+        [ -n "${session_id:-}" ] || continue
+        [ "${session_user:-}" = "$user_name" ] || continue
+        [ "$session_id" = "$current_session" ] && continue
+
+        if ! session_type="$(loginctl show-session "$session_id" -p Type --value 2>/dev/null)" ||
+          ! session_desktop="$(loginctl show-session "$session_id" -p Desktop --value 2>/dev/null)"; then
+          session_inspection_failed=1
+          continue
+        fi
+
+        case "$session_type" in
+          wayland|x11)
+            bad "same-user graphical session $session_id is still active ($session_desktop/$session_type)"
+            other_graphical=1
+            ;;
+        esac
+
+        case "${session_desktop,,}" in
+          *hyprland*)
+            bad "same-user Hyprland session $session_id is still active"
+            other_graphical=1
+            ;;
+        esac
+      done <<< "$session_list"
+
+      if [ "$session_inspection_failed" = "1" ]; then
+        skip "some same-user sessions could not be inspected"
+      elif [ "$other_graphical" = "0" ]; then
+        ok "no other same-user graphical session is active"
+      fi
+    fi
+  else
+    skip "loginctl not found; same-user graphical sessions not checked"
+  fi
+
+  if have "systemctl"; then
+    local active_fallback=""
+    local service
+    if systemctl --user show-environment >/dev/null 2>&1; then
+      for service in waybar swaync cliphist hyprpolkitagent hypridle hyprpaper; do
+        if systemctl --user is-active --quiet "$service.service" 2>/dev/null; then
+          if [ -n "$active_fallback" ]; then
+            active_fallback="$active_fallback, "
+          fi
+          active_fallback="$active_fallback$service"
+        fi
+      done
+
+      if [ -n "$active_fallback" ]; then
+        bad "fallback services are active in the Mango session: $active_fallback"
+      else
+        ok "fallback Hyprland services are inactive"
+      fi
+    else
+      skip "user systemd manager unavailable; fallback services not checked"
+    fi
+  else
+    skip "systemctl not found; fallback services not checked"
+  fi
+}
+
 section() {
   printf '\n== %s ==\n' "$*"
 }
@@ -121,6 +216,124 @@ static_checks() {
 }
 
 # --- Session checks ----------------------------------------------------------
+
+workspace_tag_state() {
+  jq -cer '
+    if (.all_tags | type) != "array" then
+      error("Mango all-tags response has no all_tags array")
+    else
+      [.all_tags[] |
+        {
+          monitor: .monitor,
+          active: ([.tags[]? | select(.is_active == true) | .index] | sort)
+        }
+      ] | sort_by(.monitor)
+    end
+  '
+}
+
+workspace_widget_checks() {
+  section "Workspace widget / Mango tags"
+
+  require_tool "mmsg" "mmsg" || return
+  require_tool "noctalia" "noctalia" || return
+  require_tool "jq tag-state parser" "jq" || return
+
+  if [ ! -t 0 ]; then
+    skip "workspace widget confirmation requires an interactive terminal"
+    return
+  fi
+
+  local before_raw before after_raw after
+  local restore_direction=""
+  local changed=0
+  local confirmation
+
+  if ! before_raw="$(mmsg get all-tags 2>&1)"; then
+    bad "could not read the initial Mango tag state: $before_raw"
+    return
+  fi
+  if ! before="$(workspace_tag_state <<<"$before_raw" 2>&1)"; then
+    bad "could not parse the initial Mango tag state: $before"
+    return
+  fi
+
+  if ! noctalia msg workspace-switch next >/dev/null 2>&1; then
+    bad "Noctalia workspace-switch next failed"
+    return
+  fi
+  sleep 1
+  if ! after_raw="$(mmsg get all-tags 2>&1)"; then
+    bad "could not read Mango tags after the Noctalia workspace switch: $after_raw"
+    return
+  fi
+  if ! after="$(workspace_tag_state <<<"$after_raw" 2>&1)"; then
+    bad "could not parse Mango tags after the Noctalia workspace switch: $after"
+    return
+  fi
+
+  if [ "$after" != "$before" ]; then
+    restore_direction="prev"
+    changed=1
+  else
+    if ! noctalia msg workspace-switch prev >/dev/null 2>&1; then
+      bad "Noctalia workspace-switch prev failed"
+      return
+    fi
+    sleep 1
+    if ! after_raw="$(mmsg get all-tags 2>&1)"; then
+      bad "could not read Mango tags after the reverse workspace switch: $after_raw"
+      return
+    fi
+    if ! after="$(workspace_tag_state <<<"$after_raw" 2>&1)"; then
+      bad "could not parse Mango tags after the reverse workspace switch: $after"
+      return
+    fi
+    if [ "$after" != "$before" ]; then
+      restore_direction="next"
+      changed=1
+    fi
+  fi
+
+  if [ "$changed" = "0" ]; then
+    bad "Noctalia workspace-switch did not change Mango's active tag state"
+    return
+  fi
+
+  ok "Noctalia workspace-switch changed Mango's active tag state"
+  printf '      Did the Noctalia bar workspace widget move to the new active tag? [y/N] '
+  if ! IFS= read -r confirmation; then
+    bad "workspace widget confirmation input failed"
+  else
+    case "$confirmation" in
+      y|Y|yes|YES)
+        ok "Noctalia workspace widget reflected the Mango tag change"
+        ;;
+      *)
+        bad "Noctalia workspace widget did not visibly reflect the Mango tag change"
+        ;;
+    esac
+  fi
+
+  if ! noctalia msg workspace-switch "$restore_direction" >/dev/null 2>&1; then
+    bad "could not restore the original Mango tag through Noctalia"
+    return
+  fi
+  sleep 1
+  if ! after_raw="$(mmsg get all-tags 2>&1)"; then
+    bad "could not read Mango tags after restoring the original tag: $after_raw"
+    return
+  fi
+  if ! after="$(workspace_tag_state <<<"$after_raw" 2>&1)"; then
+    bad "could not parse Mango tags after restoring the original tag: $after"
+    return
+  fi
+  if [ "$after" = "$before" ]; then
+    ok "Mango tag state restored after the workspace widget probe"
+  else
+    bad "Mango tag state did not return to its original value"
+  fi
+}
 
 mmsg_checks() {
   section "Mango IPC (mmsg)"
@@ -289,21 +502,54 @@ stop_probe_process() {
   wait "$pid" >/dev/null 2>&1 || true
 }
 
+new_mpris_player() {
+  local before="$1"
+  local after="$2"
+  local player
+
+  while IFS= read -r player; do
+    [ -n "$player" ] || continue
+    if ! printf '%s\n' "$before" | grep -Fxq -- "$player"; then
+      printf '%s\n' "$player"
+      return 0
+    fi
+  done <<< "$after"
+
+  return 1
+}
+
 probe_client_window() {
   local label="$1"
   local marker="$2"
   local pid="$3"
+  local cleanup="${4:-stop}"
+  local mode="${5:-window}"
   local clients
 
   sleep 3
   clients="$(mmsg get all-clients 2>&1)"
-  if printf '%s\n' "$clients" | grep -Fq -- "$marker"; then
+  if [ "$mode" = "xwayland" ]; then
+    if ! have "jq"; then
+      skip "launched $label window found, but jq is required for XWayland verification"
+    elif jq -e --arg marker "$marker" '
+      any(.clients[]?;
+        (((.title // "") | contains($marker)) or
+          ((.appid // "") | contains($marker))) and
+        .is_xwayland == true)
+    ' <<<"$clients" >/dev/null 2>&1; then
+      ok "launched $label is an XWayland client in mmsg get all-clients"
+    else
+      bad "launched $label is not reported as an XWayland client"
+    fi
+  elif printf '%s\n' "$clients" | grep -Fq -- "$marker"; then
     ok "launched $label appears in mmsg get all-clients"
   else
     bad "launched $label not visible via mmsg get all-clients"
   fi
 
-  stop_probe_process "$pid"
+  if [ "$cleanup" != "keep" ]; then
+    stop_probe_process "$pid"
+  fi
 }
 
 core_apps_checks() {
@@ -322,6 +568,7 @@ core_apps_checks() {
 
     local probe_dir marker pid thunar_dir pdf stream length
     local offset1 offset2 offset3 offset4 offset5 offset6 xref_offset
+    local mpris_ok player_state players_before players_after mpris_player
 
     if ! probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/mango-app-probe.XXXXXX")"; then
       bad "could not create the app probe workspace"
@@ -341,28 +588,55 @@ core_apps_checks() {
       marker="mango-firefox-probe-$$"
       printf '<!doctype html><title>%s</title><p>Mango Firefox probe</p>\n' \
         "$marker" > "$probe_dir/probe.html"
-      firefox \
+      MOZ_ENABLE_WAYLAND=0 firefox \
         --new-instance \
         --no-remote \
         --profile "$probe_dir/firefox-profile" \
         --new-window "file://$probe_dir/probe.html" \
         >/dev/null 2>&1 &
       pid=$!
-      probe_client_window "Firefox" "$marker" "$pid"
+      if have "jq"; then
+        probe_client_window "Firefox via XWayland" "$marker" "$pid" stop xwayland
+      else
+        skip "Firefox XWayland probe needs jq"
+        stop_probe_process "$pid"
+      fi
     else
       skip "launch probe: Firefox not found"
     fi
 
     if have "mpv"; then
       marker="mango-mpv-probe-$$"
+      if have "playerctl"; then
+        players_before="$(playerctl -l 2>/dev/null || true)"
+      fi
       mpv \
-        --no-config \
         --force-window=yes \
         --idle=yes \
         --title="$marker" \
         >/dev/null 2>&1 &
       pid=$!
-      probe_client_window "mpv" "$marker" "$pid"
+      probe_client_window "mpv" "$marker" "$pid" keep
+
+      if have "playerctl"; then
+        mpris_ok=0
+        for _ in $(seq 1 10); do
+          players_after="$(playerctl -l 2>/dev/null || true)"
+          if mpris_player="$(new_mpris_player "$players_before" "$players_after")" &&
+            player_state="$(playerctl --player="$mpris_player" status 2>&1)"; then
+            ok "playerctl sees the new configured mpv MPRIS player ($mpris_player): $player_state"
+            mpris_ok=1
+            break
+          fi
+          sleep 1
+        done
+        if [ "$mpris_ok" = "0" ]; then
+          bad "playerctl cannot query the new configured mpv MPRIS player"
+        fi
+      else
+        skip "mpv MPRIS probe: playerctl not found"
+      fi
+      stop_probe_process "$pid"
     else
       skip "launch probe: mpv not found"
     fi
@@ -489,12 +763,14 @@ process_rss() {
   fi
 
   PROCESS_TOTAL="$total_kb"
+  PROCESS_FOUND="$found"
 }
 
 footprint_report() {
   section "Memory footprint"
 
   local name mango_total=0 noctalia_total=0 baseline_total=0
+  local baseline_missing=""
 
   for name in mango noctalia; do
     process_rss "$name"
@@ -508,6 +784,12 @@ footprint_report() {
   for name in waybar swaync fuzzel hyprlock hypridle hyprpaper; do
     process_rss "$name"
     baseline_total=$((baseline_total + PROCESS_TOTAL))
+    if [ "$PROCESS_FOUND" = "0" ]; then
+      if [ -n "$baseline_missing" ]; then
+        baseline_missing="$baseline_missing, "
+      fi
+      baseline_missing="$baseline_missing$name"
+    fi
   done
 
   if [ "$mango_total" -gt 0 ] || [ "$noctalia_total" -gt 0 ]; then
@@ -517,12 +799,15 @@ footprint_report() {
     skip "experiment footprint has no running Mango or Noctalia process"
   fi
 
-  if [ "$noctalia_total" -gt 0 ] && [ "$baseline_total" -gt 0 ]; then
+  if [ -n "$baseline_missing" ]; then
+    printf '      Hyprland-stack baseline: non-comparable (missing: %s)\n' "$baseline_missing"
+    skip "footprint comparison is non-comparable until all fallback processes are measured"
+  elif [ "$noctalia_total" -gt 0 ] && [ "$baseline_total" -gt 0 ]; then
     printf '      Noctalia total: %s KiB RSS\n' "$noctalia_total"
     printf '      Hyprland-stack baseline: %s KiB RSS\n' "$baseline_total"
     ok "Noctalia-to-fallback footprint comparison recorded"
   else
-    skip "footprint comparison needs Noctalia and the fallback process set"
+    skip "footprint comparison needs Noctalia and the complete fallback process set"
   fi
 }
 
@@ -533,6 +818,7 @@ CONFIG_DIR="${HOME}/.config"
 LOCK_LOOP=0
 SUSPEND_PROBE=0
 LAUNCH_APPS=0
+SESSION_PREFLIGHT=0
 FOOTPRINT=0
 FOOTPRINT_ONLY=0
 
@@ -558,6 +844,10 @@ while [ "$#" -gt 0 ]; do
       LAUNCH_APPS=1
       shift
       ;;
+    --preflight)
+      SESSION_PREFLIGHT=1
+      shift
+      ;;
     --footprint)
       FOOTPRINT=1
       shift
@@ -567,7 +857,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     *)
-      echo "usage: $0 [--static [CONFIG_DIR]] [--lock-loop N] [--suspend-probe] [--launch-apps] [--footprint] [--footprint-only]" >&2
+      echo "usage: $0 [--static [CONFIG_DIR]] [--lock-loop N] [--suspend-probe] [--launch-apps] [--preflight] [--footprint] [--footprint-only]" >&2
       exit 2
       ;;
   esac
@@ -575,7 +865,9 @@ done
 
 printf 'MangoWM + Noctalia validation (%s)\n' "$(date -Is)"
 
-if [ "$STATIC" = "1" ]; then
+if [ "$SESSION_PREFLIGHT" = "1" ]; then
+  sequential_session_checks
+elif [ "$STATIC" = "1" ]; then
   static_checks "$CONFIG_DIR"
 elif [ "$FOOTPRINT_ONLY" = "1" ]; then
   footprint_report
@@ -593,8 +885,10 @@ else
     ok "XDG_CURRENT_DESKTOP includes mango (Mango session detected)"
   fi
 
+  sequential_session_checks
   mmsg_checks
   noctalia_ipc_checks
+  workspace_widget_checks
   core_apps_checks
   screenshot_clipboard_checks
   screen_share_probe
