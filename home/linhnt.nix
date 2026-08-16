@@ -3,6 +3,7 @@
 {
   imports = [
     ./modules/shell.nix
+    ./modules/moshi.nix
     ./modules/git.nix
     ./modules/dev.nix
     ./modules/appearance.nix
