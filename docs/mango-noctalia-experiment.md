@@ -12,11 +12,13 @@ phases are the captain-held D-1/D-2/D-3/D-4 holds.
 
 ## Single flag
 
-Everything lives behind one off-by-default flag:
+Everything lives behind one flag (the module option defaults to off; the
+host now sets it on — durable since the captain completed Phase 1 manual
+testing on 2026-08-16):
 
 ```nix
 # hosts/metacube/configuration.nix
-metacube.experiments.mangoNoctalia.enable = false;  # flip to true to run
+metacube.experiments.mangoNoctalia.enable = true;  # flip to false to roll back
 ```
 
 Module layout (all gated by that flag; inert when off):
@@ -56,22 +58,15 @@ validation script's `--preflight` check on the fresh VT login.
 No additional Noctalia recommended services are added, avoiding
 machine-global `upower`/`power-profiles-daemon` dependencies.
 
-## Phase 0 build boundary
+## Build boundary
 
-This feature branch is build-only. Do not run `nixos-rebuild test` or
-`nixos-rebuild switch`, activate Home Manager, or enter the Mango session from
-this unmerged branch. Keep the host flag false while validating the default
-state:
+The host now sets the flag on, so the plain toplevel build exercises the
+experiment state directly. This remains build-only: do not run
+`nixos-rebuild test` or `nixos-rebuild switch`, activate Home Manager, or
+enter the Mango session from an unmerged branch.
 
 ```sh
 sudo nixos-rebuild build --flake .#metacube
-```
-
-Build the flag-on state without editing files (lib.mkForce is required because
-the host sets the flag explicitly):
-
-```sh
-nix build --impure --expr 'let f = builtins.getFlake "path:'"$PWD"'"; in (f.nixosConfigurations.metacube.extendModules { modules = [ ({ lib, ... }: { metacube.experiments.mangoNoctalia.enable = lib.mkForce true; }) ]; }).config.system.build.toplevel'
 ```
 
 ## Captain-approved Phase 1 entry

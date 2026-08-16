@@ -25,13 +25,15 @@
   #
   # MangoWM + Noctalia experiment
   #
-  # Off by default; the module is inert unless this flag is flipped.
+  # Durable ON: the captain completed Phase 1 manual testing on 2026-08-16
+  # (20 lock/unlock cycles, suspend/resume, Firefox/Thunar daily use) and
+  # approved keeping the experiment enabled. Flip to false to roll back.
   # When enabled it only adds Mango/Noctalia packages + portal wiring and
   # generates the opt-in session configs; greetd/Hyprland stay untouched.
   # See docs/mango-noctalia-experiment.md.
   #
 
-  metacube.experiments.mangoNoctalia.enable = false;
+  metacube.experiments.mangoNoctalia.enable = true;
 
   #
   # Host identity
