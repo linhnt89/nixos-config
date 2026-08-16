@@ -7,10 +7,9 @@
 #
 #   --static [CONFIG_DIR]
 #       Validate the generated config files without a running session.
-#       CONFIG_DIR defaults to ~/.config; only the noctalia config.toml and
-#       the MetaCube palette are validated here (Mango config.conf has no
-#       offline validator at 0.15.6 — it is checked at runtime via hot
-#       reload + the mmsg probes below).
+#       CONFIG_DIR defaults to ~/.config; Mango config.conf is parsed with
+#       Mango's offline check, while noctalia config.toml and the MetaCube
+#       palette use their available validators.
 #
 #   (default, run inside the Mango session)
 #       Full Phase-1 checklist: Mango IPC, Noctalia IPC, lock probe,
@@ -180,10 +179,24 @@ section() {
 
 static_checks() {
   local config_dir="${1:-$HOME/.config}"
+  local mango_config="$config_dir/mango/config.conf"
   local noctalia_config="$config_dir/noctalia/config.toml"
   local palette="$config_dir/noctalia/palettes/MetaCube.json"
 
   section "Static config validation ($config_dir)"
+
+  if require_tool "Mango config validator" "mango"; then
+    if [ -f "$mango_config" ]; then
+      if mango -c "$mango_config" -p >/tmp/mango-validate.log 2>&1; then
+        ok "mango config check: $mango_config"
+      else
+        bad "mango config check failed: $mango_config"
+        sed 's/^/      /' /tmp/mango-validate.log
+      fi
+    else
+      skip "Mango config.conf not found: $mango_config"
+    fi
+  fi
 
   if require_tool "Noctalia config validator" "noctalia"; then
     if [ -f "$noctalia_config" ]; then
@@ -340,17 +353,40 @@ mmsg_checks() {
 
   require_tool "mmsg" "mmsg" || return
 
-  local out
+  local out monitors reload
   out="$(mmsg get version 2>&1)" || {
     bad "mmsg get version failed: $out"
     return
   }
   ok "mmsg get version: $out"
 
-  if mmsg get all-monitors >/dev/null 2>&1; then
-    ok "mmsg get all-monitors"
+  if ! require_tool "jq Mango response parser" "jq"; then
+    skip "Mango config reload and HDMI-A-1 geometry not checked"
   else
-    bad "mmsg get all-monitors failed"
+    if ! reload="$(mmsg dispatch reload_config 2>&1)" ||
+      ! jq -e '.success == true' <<<"$reload" >/dev/null 2>&1; then
+      bad "mmsg dispatch reload_config failed: $reload"
+      return
+    fi
+    ok "mmsg dispatch reload_config"
+
+    if ! monitors="$(mmsg get all-monitors 2>&1)"; then
+      bad "mmsg get all-monitors failed: $monitors"
+    elif jq -e --arg name "HDMI-A-1" '
+      (.monitors | type == "array") and
+      (any(.monitors[]?;
+        .name == $name and
+        .x == 0 and .y == 0 and
+        .width == 2560 and .height == 1440 and
+        .scale == 1
+      ))
+    ' <<<"$monitors" >/dev/null 2>&1; then
+      ok "HDMI-A-1 monitor geometry is 2560x1440 at (0,0), scale 1"
+    else
+      bad "HDMI-A-1 monitor geometry does not match 2560x1440 at (0,0), scale 1"
+      jq -c '.monitors // .' <<<"$monitors" 2>/dev/null |
+        sed 's/^/      /'
+    fi
   fi
 
   if mmsg get all-tags >/dev/null 2>&1; then
