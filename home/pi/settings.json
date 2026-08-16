@@ -1,20 +1,6 @@
 {
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.6-luna",
-  "defaultThinkingLevel": "xhigh",
-
-  "hideThinkingBlock": true,
-  "quietStartup": true,
-  "collapseChangelog": true,
-
-  "steeringMode": "all",
-  "followUpMode": "all",
-
-  "compaction": {
-    "enabled": true,
-    "reserveTokens": 16384,
-    "keepRecentTokens": 20000
-  },
 
   "packages": [
     "git:github.com/algal/pi-openai-server-compaction@8a3de2f3b0c178fdd6f73f2f94172dfc3943e466",
