@@ -22,7 +22,9 @@
 #   --suspend-probe   lock, suspend, verify the session survives resume
 #                     (Mango #1017); the machine actually suspends
 #   --launch-apps     launch kitty/Firefox/XWayland/mpv/Thunar/Zathura and
-#                     verify windows, XWayland, and mpv MPRIS via playerctl
+#                     verify windows, XWayland, and mpv MPRIS via playerctl;
+#                     client windows are polled for up to 30 s (first check
+#                     at 3 s, then every second) per mango-probe-lib.sh
 #   --preflight       verify that no same-user Hyprland session or fallback
 #                     service is still active before starting Mango; must run
 #                     from a fresh VT (rejects graphical sessions with exit 2)
@@ -36,6 +38,11 @@
 # noctalia, and the probed tools (missing tools are reported as SKIP).
 
 set -u
+
+# Bounded client-window polling (wait_for_client / probe_client_window),
+# shared with the regression tests (scripts/test-mango-probe.sh).
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+. "$script_dir/mango-probe-lib.sh"
 
 PASS=0
 FAIL=0
@@ -570,13 +577,6 @@ suspend_probe() {
   fi
 }
 
-stop_probe_process() {
-  local pid="$1"
-
-  kill "$pid" >/dev/null 2>&1 || true
-  wait "$pid" >/dev/null 2>&1 || true
-}
-
 new_mpris_player() {
   local before="$1"
   local after="$2"
@@ -591,40 +591,6 @@ new_mpris_player() {
   done <<< "$after"
 
   return 1
-}
-
-probe_client_window() {
-  local label="$1"
-  local marker="$2"
-  local pid="$3"
-  local cleanup="${4:-stop}"
-  local mode="${5:-window}"
-  local clients
-
-  sleep 3
-  clients="$(mmsg get all-clients 2>&1)"
-  if [ "$mode" = "xwayland" ]; then
-    if ! have "jq"; then
-      skip "launched $label window found, but jq is required for XWayland verification"
-    elif jq -e --arg marker "$marker" '
-      any(.clients[]?;
-        (((.title // "") | contains($marker)) or
-          ((.appid // "") | contains($marker))) and
-        .is_xwayland == true)
-    ' <<<"$clients" >/dev/null 2>&1; then
-      ok "launched $label is an XWayland client in mmsg get all-clients"
-    else
-      bad "launched $label is not reported as an XWayland client"
-    fi
-  elif printf '%s\n' "$clients" | grep -Fq -- "$marker"; then
-    ok "launched $label appears in mmsg get all-clients"
-  else
-    bad "launched $label not visible via mmsg get all-clients"
-  fi
-
-  if [ "$cleanup" != "keep" ]; then
-    stop_probe_process "$pid"
-  fi
 }
 
 core_apps_checks() {
@@ -652,9 +618,9 @@ core_apps_checks() {
 
     if have "kitty"; then
       marker="mango-kitty-probe-$$"
-      kitty --class "$marker" >/dev/null 2>&1 &
+      kitty --class "$marker" >/dev/null 2>"$probe_dir/kitty.stderr" &
       pid=$!
-      probe_client_window "kitty" "$marker" "$pid"
+      probe_client_window "kitty" "$marker" "$pid" stop window "$probe_dir/kitty.stderr"
     else
       skip "launch probe: kitty not found"
     fi
@@ -668,14 +634,10 @@ core_apps_checks() {
         --no-remote \
         --profile "$probe_dir/firefox-profile" \
         --new-window "file://$probe_dir/probe.html" \
-        >/dev/null 2>&1 &
+        >/dev/null 2>"$probe_dir/firefox.stderr" &
       pid=$!
-      if have "jq"; then
-        probe_client_window "Firefox via XWayland" "$marker" "$pid" stop xwayland
-      else
-        skip "Firefox XWayland probe needs jq"
-        stop_probe_process "$pid"
-      fi
+      # probe_client_window SKIPs (and cleans up) when jq is missing.
+      probe_client_window "Firefox via XWayland" "$marker" "$pid" stop xwayland "$probe_dir/firefox.stderr"
     else
       skip "launch probe: Firefox not found"
     fi
@@ -689,9 +651,9 @@ core_apps_checks() {
         --force-window=yes \
         --idle=yes \
         --title="$marker" \
-        >/dev/null 2>&1 &
+        >/dev/null 2>"$probe_dir/mpv.stderr" &
       pid=$!
-      probe_client_window "mpv" "$marker" "$pid" keep
+      probe_client_window "mpv" "$marker" "$pid" keep window "$probe_dir/mpv.stderr"
 
       if have "playerctl"; then
         mpris_ok=0
@@ -720,9 +682,9 @@ core_apps_checks() {
       marker="mango-thunar-probe-$$"
       thunar_dir="$probe_dir/$marker"
       mkdir -p "$thunar_dir"
-      thunar --new-window "$thunar_dir" >/dev/null 2>&1 &
+      thunar --new-window "$thunar_dir" >/dev/null 2>"$probe_dir/thunar.stderr" &
       pid=$!
-      probe_client_window "Thunar" "$marker" "$pid"
+      probe_client_window "Thunar" "$marker" "$pid" stop window "$probe_dir/thunar.stderr"
     else
       skip "launch probe: Thunar not found"
     fi
@@ -750,9 +712,9 @@ core_apps_checks() {
       xref_offset="$(wc -c < "$pdf")"
       printf 'xref\n0 7\n0000000000 65535 f \n%010d 00000 n \n%010d 00000 n \n%010d 00000 n \n%010d 00000 n \n%010d 00000 n \n%010d 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Info 5 0 R >>\nstartxref\n%s\n%%%%EOF\n' \
         "$offset1" "$offset2" "$offset3" "$offset4" "$offset5" "$offset6" "$xref_offset" >> "$pdf"
-      zathura "$pdf" >/dev/null 2>&1 &
+      zathura "$pdf" >/dev/null 2>"$probe_dir/zathura.stderr" &
       pid=$!
-      probe_client_window "Zathura" "$marker" "$pid"
+      probe_client_window "Zathura" "$marker" "$pid" stop window "$probe_dir/zathura.stderr"
     else
       skip "launch probe: Zathura not found"
     fi
