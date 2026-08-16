@@ -32,6 +32,7 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │       ├── desktop.nix
 │       ├── fonts.nix
 │       ├── hyprland.nix
+│       ├── mango-experiment.nix
 │       └── ssh.nix
 │
 ├── home/
@@ -40,6 +41,7 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │   └── modules/
 │       ├── appearance.nix
 │       ├── apps.nix
+│       ├── experiment.nix
 │       ├── git.nix
 │       ├── herdr.nix
 │       ├── moshi.nix
@@ -47,7 +49,11 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │       ├── shell.nix
 │       └── waybar.nix
 │
+├── scripts/
+│   └── validate-mango-session.sh
+│
 └── docs/
+    ├── mango-noctalia-experiment.md
     └── moshi-herdr.md
 ```
 
@@ -112,6 +118,11 @@ hyprland.nix
     UWSM
     greetd / tuigreet
     Hyprlock PAM integration
+
+mango-experiment.nix
+    opt-in MangoWM + Noctalia packages
+    portal and session wiring
+    manual-session guard
 
 ssh.nix
     OpenSSH server (key-only)
@@ -181,6 +192,10 @@ apps.nix
     desktop applications
     MIME associations
 
+experiment.nix
+    MangoWM + Noctalia experiment configuration
+    generated only when the experiment is enabled
+
 services.nix
     Mako
     Hypridle
@@ -201,7 +216,9 @@ herdr.nix
     Herdr agent session runtime
 ```
 
-`home/linhnt.nix` is the Home Manager entry point and imports these modules.
+`home/linhnt.nix` is the Home Manager entry point and imports the regular user
+modules. The opt-in `experiment.nix` module is imported by the NixOS experiment
+module only when its flag is enabled.
 
 The native Hyprland Lua configuration is:
 
@@ -212,6 +229,9 @@ home/hyprland.lua
 Documentation:
 
 ```text
+docs/mango-noctalia-experiment.md
+    MangoWM + Noctalia experiment runbook and rollback
+
 docs/moshi-herdr.md
     Connecting the Moshi Android app to MetaCube
     and attaching to Herdr sessions
