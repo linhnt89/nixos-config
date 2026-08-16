@@ -6,9 +6,11 @@ procedure; the README section "Updating dependencies" is the short form.
 
 ## Principles
 
-- **Updates are deliberate, reviewed, and build-verified.** Dependabot
-  opens targeted per-dependency PRs; CI builds every PR; nothing is
-  activated automatically, ever.
+- **Updates are deliberate, reviewed, and locally build-verified.**
+  Dependabot opens targeted per-dependency PRs; every PR must pass the
+  repository's local gate `scripts/check.sh`; nothing is activated
+  automatically, ever. CI is an optional fallback, not a required
+  check.
 - **Never self-update Nix-managed tools.** `no-mistakes update`,
   `herdr update`, `treehouse update`, `pi update` and `npm install -g`
   are the wrong path on this host: every tool is immutable in the Nix
@@ -50,7 +52,9 @@ Config: `.github/dependabot.yml`. Weekly on Monday (Asia/Ho_Chi_Minh):
 nix and npm; monthly: GitHub Actions. Each PR is one targeted update.
 Review checklist for every Dependabot PR:
 
-1. CI `build` job is green (`nix flake check` + toplevel build).
+1. Local validation passes: `scripts/check.sh` (static checks +
+   `nix flake check` + non-activating toplevel build). CI is an
+   optional fallback, not required.
 2. The diff touches only the intended input (`flake.lock`, possibly
    `flake.nix` for ref rewrites) or the intended npm pins.
 3. `nixpkgs-unstable` PRs: confirm the Pi package change is wanted.
@@ -72,10 +76,30 @@ scripts/check-stale.sh --days 30      # looser age threshold
 scripts/check-stale.sh --skip-remote  # offline: age analysis only
 ```
 
-CI runs it weekly (Monday 06:30) and on `workflow_dispatch` in the
-`stale` job. A red weekly run is the report — the table is in the job
-summary. It never opens PRs (Dependabot owns those) and never builds or
-activates the system.
+The `stale` CI job runs it weekly (Monday 06:30) and on manual
+`workflow_dispatch` — the only scheduled CI job. A red weekly run is
+the report — the table is in the job summary. It never opens PRs
+(Dependabot owns those) and never builds or activates the system.
+
+## Local validation (authoritative)
+
+`scripts/check.sh` is the repository-owned local gate for ordinary
+changes. It runs static checks (shell syntax, YAML/JSON parsing),
+`nix flake check`, and a non-activating toplevel build — it never
+switches, tests, or activates the system. Run it on the branch before
+merging any PR, Dependabot or not:
+
+```bash
+scripts/check.sh                        # local gate (sudo build)
+scripts/check.sh --nix-build-only       # plain `nix build` (no sudo; CI/containers)
+scripts/check.sh --skip-build           # static checks + flake check only
+```
+
+CI is an optional fallback for an independent clean-run build: the
+`build` job is `workflow_dispatch`-only and runs the same
+`scripts/check.sh --nix-build-only`. A green CI run is not required
+and does not replace local validation or the post-merge machine
+verification in the next section.
 
 ## Targeted manual updates
 
@@ -103,10 +127,13 @@ scripts/update-no-mistakes.sh --dry-run  # preview only
 
 After any lock change, commit `flake.lock` together with the change —
 never a bare lock refresh. Feature branches validate with
-`sudo nixos-rebuild build --flake .#metacube` per `AGENTS.md`.
+`scripts/check.sh` (its build step uses `sudo nixos-rebuild build
+--flake .#metacube`) per `AGENTS.md`.
 
 ## From merged update to a running system
 
+Real desktop/system-use validation happens here, on the machine,
+after merge — local checks and CI only prove the configuration builds.
 Activation is **manual and post-merge only**, and only from the
 canonical checkout:
 
@@ -166,7 +193,7 @@ sudo nixos-rebuild switch --rollback     # back to the previous generation
 
 Or pick a previous generation from the systemd-boot menu at boot.
 Because every update is its own generation, a bad bump is reverted by
-switching back — another reason update PRs stay per-input and
+switching back — another reason update PRs stay per-input and locally
 build-verified. Rollback never touches `stateVersion`.
 
 ## Separate update paths (not this repo)

@@ -1,8 +1,11 @@
-# CI for MetaCube.
+# Optional CI for MetaCube (local validation is authoritative).
 #
-# build: evaluates the flake and builds the NixOS toplevel so every
-#   dependency PR proves itself before merge. Runs on pull requests
-#   and on pushes to main.
+# build: manual (workflow_dispatch) independent clean-run build. It runs
+#   scripts/check.sh --nix-build-only — the same local gate the
+#   repository owns (static checks + `nix flake check` + non-activating
+#   toplevel build). Ordinary changes are validated locally with
+#   scripts/check.sh; this job is an optional fallback, not a required
+#   PR check. It never switches or activates the system.
 # stale: weekly (and manual) staleness report via scripts/check-stale.sh.
 #   It reports only - it never opens update PRs (Dependabot owns those)
 #   and it never builds or activates the system. A red run means stale
@@ -13,14 +16,10 @@
 name: ci
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
   schedule:
     # Weekly staleness backstop: Monday 06:30 Asia/Ho_Chi_Minh (UTC+7).
     - cron: "30 6 * * 1"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,7 +30,8 @@ concurrency:
 
 jobs:
   build:
-    name: flake check + toplevel build
+    name: Optional clean-run build (manual)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,11 +59,8 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: nix flake check
-        run: nix flake check
-
-      - name: Build NixOS toplevel
-        run: nix build .#nixosConfigurations.metacube.config.system.build.toplevel
+      - name: Local check (static checks + flake check + toplevel build)
+        run: ./scripts/check.sh --nix-build-only
 
   stale:
     name: Staleness report
