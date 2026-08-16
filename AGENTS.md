@@ -8,7 +8,7 @@
 - Treat `nixos-rebuild switch` as machine-global; normally switch only from the integrated canonical `main` checkout.
 - New files referenced by this Git-backed flake must be Git-visible before Nix can evaluate them.
 - Prefer clear module ownership and avoid duplicating configuration across modules.
-- Pi authored configuration belongs under `home/pi/`; credentials and runtime state under `~/.pi/agent/` must remain outside Git.
+- Pi authored configuration belongs under `home/pi/`: `models.json`, `AGENTS.md`, and `openai-server-compaction.json` are read-only declarative links; `settings.json` and `web-search.json` are seeds copied once into runtime-owned files (`~/.pi/agent/settings.json`, `~/.config/pi/web-search.json`) on first activation. Pi owns the runtime files afterwards; the tracked clone is never written at runtime. Re-apply tracked defaults with `pi-apply-defaults`. Credentials and runtime state under `~/.pi/agent/` must remain outside Git. See `docs/pi-settings-boundary.md`.
 - When giving manual configuration changes, explain the change first and provide complete changed files rather than partial replacement fragments.
 - Before considering a configuration change complete, successfully build the relevant NixOS configuration or clearly report why it could not be built.
 
