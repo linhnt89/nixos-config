@@ -1,0 +1,10 @@
+# Treehouse configuration
+# Repo-safe settings live at the repository root; executable hooks
+# belong only in ~/.config/treehouse/config.toml.
+
+# Maximum number of worktrees in the pool
+max_trees = 8
+
+# Worktree pool root (relative to repo root or absolute).
+# Empty means $HOME/.treehouse, which matches the user-level default.
+root = ""
