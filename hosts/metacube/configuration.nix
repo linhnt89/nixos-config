@@ -18,8 +18,20 @@
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/hyprland.nix
+    ../../modules/nixos/mango-experiment.nix
     ../../modules/nixos/ssh.nix
   ];
+
+  #
+  # MangoWM + Noctalia experiment
+  #
+  # Off by default; the module is inert unless this flag is flipped.
+  # When enabled it only adds Mango/Noctalia packages + portal wiring and
+  # generates the opt-in session configs; greetd/Hyprland stay untouched.
+  # See docs/mango-noctalia-experiment.md.
+  #
+
+  metacube.experiments.mangoNoctalia.enable = false;
 
   #
   # Host identity

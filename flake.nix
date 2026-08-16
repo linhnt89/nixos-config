@@ -49,6 +49,12 @@
         nixpkgs.lib.nixosSystem {
           inherit system;
 
+          # The Mango/Noctalia experiment consumes packages from the pinned
+          # nixpkgs-unstable input (see modules/nixos/mango-experiment.nix).
+          specialArgs = {
+            pkgsUnstable = nixpkgs-unstable.legacyPackages.${system};
+          };
+
           modules = [
             ./hosts/metacube/configuration.nix
 
