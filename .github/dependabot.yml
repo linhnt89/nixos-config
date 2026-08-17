@@ -39,6 +39,12 @@ updates:
       # Tarball-URL inputs cannot be bumped by Dependabot; the helper
       # script owns this pin (see scripts/update-no-mistakes.sh).
       - dependency-name: "noMistakes"
+      # Private same-owner input: Dependabot's token is scoped to this
+      # repo and cannot fetch linhnt89/nixdev-config, so its PRs would
+      # always fail. Update it manually with
+      # `nix flake lock --update-input nixdev-config` (see
+      # docs/nixdev-config-integration.md).
+      - dependency-name: "nixdev-config"
 
   - package-ecosystem: "npm"
     directory: "/home/firstmate/node-tools"

@@ -4,8 +4,14 @@ let
   #
   # Firstmate universal runtime
   #
+  # Use the shared `pkgs.nodejs` (the same Node the portable profile
+  # installs in the user profile via the common package set). Pinning a
+  # separate nodejs_22 here would put two different `node` binaries in
+  # the same Home Manager profile and collide at generation time;
+  # nixdev-config owns the Node package for the dev layer.
+  #
 
-  nodejs = pkgs.nodejs_22;
+  nodejs = pkgs.nodejs;
 
   nodeToolsRoot =
     ../firstmate/node-tools;

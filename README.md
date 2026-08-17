@@ -19,6 +19,7 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 ```text
 .
 ├── flake.nix
+│         nixdev-config input: private portable Home Manager layer
 ├── flake.lock
 │
 ├── hosts/
@@ -42,20 +43,23 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │       ├── appearance.nix
 │       ├── apps.nix
 │       ├── experiment.nix
-│       ├── git.nix
-│       ├── herdr.nix
-│       ├── moshi.nix
+│       ├── git.nix        (local adapters: MetaCube-personal settings
+│       ├── herdr.nix       only — the portable layer comes from the
+│       ├── moshi.nix       nixdev-config desktop role, see below)
 │       ├── services.nix
 │       ├── shell.nix
 │       └── waybar.nix
 │
 ├── scripts/
-│   └── validate-mango-session.sh
+│   └── check.sh          (static checks + flake check + toplevel build
+│                          + Home Manager config evaluation)
 │
 └── docs/
     ├── lan-laptop-access.md
     ├── mango-noctalia-experiment.md
-    └── moshi-herdr.md
+    ├── moshi-herdr.md
+    ├── nixdev-config-integration.md
+    └── pi-settings-boundary.md
 ```
 
 ## Architecture
@@ -79,6 +83,13 @@ The rebuild target is therefore:
 ```
 
 The flake should stay relatively small.
+
+It also imports the **desktop role** of the private `nixdev-config` flake
+(`nixdev-config.homeManagerModules.desktop`) into the Home Manager user
+configuration: the portable shell/development layer and `gh` (never
+`glab`). That input is private; fetching it needs a GitHub access-token in
+the operator's Nix configuration — never a committed token. See
+`docs/nixdev-config-integration.md` for setup, updates, and rollback.
 
 ### NixOS modules
 
@@ -164,22 +175,31 @@ User-level configuration lives under:
 home/modules/
 ```
 
+The portable layer (shell/starship/fzf/bat/eza/direnv/delta/git structure,
+common packages incl. Python/Node, `gh`) is owned by the nixdev-config
+desktop role (imported in `flake.nix`). The local modules are **adapters**
+carrying only MetaCube-personal settings:
+
 Current modules:
 
 ```text
 shell.nix
-    Zsh
-    Starship
-    fzf
-    bat
-    eza
-    CLI tools
+    Zsh personal behavior (history, autosuggestion, syntax highlighting)
+    Starship personal settings
+    fzf widget behavior (fd-based commands)
+    eza desktop override (keep `ls` untouched)
 
 git.nix
-    Git
-    Delta
-    SSH client
+    Git identity and personal workflow settings
+    Delta UI options
+    SSH client identity
     UWSM SSH-agent environment
+
+dev.nix
+    gh client behavior (SSH protocol, no HTTPS credential helper)
+    lazygit UI
+    Pi lane (pkgsUnstable)
+    imports Firstmate/treehouse/herdr modules
 
 appearance.nix
     GTK
@@ -222,7 +242,9 @@ herdr.nix
 `home/linhnt.nix` is the Home Manager entry point and imports the regular user
 modules. The gated `experiment.nix` module is imported by the NixOS experiment
 module only when its flag is enabled (it generates the Mango/Noctalia configs
-read by the default Mango login session).
+read by the default Mango login session). The portable layer itself is
+imported from the private `nixdev-config` desktop role in `flake.nix`
+(see `docs/nixdev-config-integration.md`).
 
 The native Hyprland Lua configuration is:
 
@@ -243,6 +265,10 @@ docs/moshi-herdr.md
 docs/lan-laptop-access.md
     LAN remote use of the Windows 11 Pro laptop
     over RDP (Remmina client)
+
+docs/nixdev-config-integration.md
+    Private nixdev-config input: ownership boundary, authentication
+    setup, update procedure, rollback
 ```
 
 ## Where should a new setting go?
@@ -656,9 +682,10 @@ and nothing is activated automatically.
 
 **Local validation is authoritative.** Every change — including
 Dependabot/update PRs — must pass the repository-owned local check
-before merge. It runs static checks, `nix flake check`, and a
-non-activating build of the system toplevel; it never switches or
-activates anything:
+before merge. It runs static checks, `nix flake check`, a non-activating
+build of the system toplevel, and a full evaluation of the Home Manager
+user configuration (which instantiates the imported nixdev-config
+desktop modules); it never switches or activates anything:
 
 ```bash
 scripts/check.sh                # static checks + nix flake check + build
@@ -679,10 +706,15 @@ docs/updates-runbook.md
 Helpers:
 
 ```bash
-scripts/check.sh                # local validation gate (authoritative)
+scripts/check.sh                # static checks + flake check + build + HM eval
 scripts/check-stale.sh          # read-only staleness report
 scripts/update-no-mistakes.sh   # bump the noMistakes tarball pin (Dependabot cannot)
 ```
+
+The private `nixdev-config` input is the one lane Dependabot cannot
+touch (its token is scoped to this repo): it moves manually with
+`nix flake lock --update-input nixdev-config`, and fetching it needs a
+GitHub access-token (see `docs/nixdev-config-integration.md`).
 
 Inspect the current inputs with:
 
