@@ -3,7 +3,7 @@
 #
 # Local adapter for the portable shell profile.
 #
-# The shared portable shell layer is imported from the private
+# The shared portable shell layer is imported from the
 # nixdev-config flake in flake.nix (`nixdev-config.homeManagerModules.desktop`
 # -> home/modules/shell.nix there): it owns the *enablement* of zsh /
 # starship / fzf / bat / eza and the common package set (fd, ripgrep, jq,

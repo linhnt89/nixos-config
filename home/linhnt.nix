@@ -5,7 +5,7 @@
 #
 # The portable desktop layer (shell/starship/fzf/bat/eza/direnv/delta/git
 # structure, common packages incl. Python/Node, and the `gh` package) is
-# imported from the private nixdev-config flake in flake.nix
+# imported from the nixdev-config flake in flake.nix
 # (`nixdev-config.homeManagerModules.desktop`). The modules imported
 # below are LOCAL ADAPTERS: they carry only MetaCube-personal settings
 # (identity, SSH hosts, appearance, apps, services, Mango/Noctalia,

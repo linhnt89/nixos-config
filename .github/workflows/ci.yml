@@ -12,14 +12,11 @@
 #   and it never builds or activates the system. A red run means stale
 #   inputs or tool pins; the summary holds the table.
 #
-# Private-input note: the flake depends on the PRIVATE linhnt89/nixdev-config
-# input, which the repo-scoped GITHUB_TOKEN cannot fetch. This optional CI
-# may therefore fail at that fetch step without operator-provided runner
-# authentication; local validation on the desktop remains authoritative
-# (see docs/nixdev-config-integration.md). No CI secrets are used.
+# All flake inputs are public; scripts/check.sh fetches the
+# nixdev-config input without any GitHub access-token, so the build job
+# needs no CI secrets at all. No CI secrets are used.
 #
-# Least privilege: read-only contents permission, no secrets beyond the
-# default GITHUB_TOKEN used for nix's github access-tokens.
+# Least privilege: read-only contents permission.
 name: ci
 
 on:
@@ -62,9 +59,6 @@ jobs:
           df -h / /mnt 2>/dev/null || df -h /
 
       - uses: cachix/install-nix-action@v30
-        with:
-          extra_nix_config: |
-            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
       - name: Local check (static checks + flake check + toplevel + HM eval)
         run: ./scripts/check.sh --nix-build-only
