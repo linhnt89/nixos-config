@@ -27,9 +27,11 @@
   #
   # Durable ON: the captain completed Phase 1 manual testing on 2026-08-16
   # (20 lock/unlock cycles, suspend/resume, Firefox/Thunar daily use) and
-  # approved keeping the experiment enabled. Flip to false to roll back.
-  # When enabled it only adds Mango/Noctalia packages + portal wiring and
-  # generates the opt-in session configs; greetd/Hyprland stay untouched.
+  # approved making Mango the default login session. While enabled, the
+  # greetd default session is Mango via UWSM (`uwsm start -e -D mango
+  # mango.desktop`); Hyprland stays installed and remains selectable from
+  # the login screen (tuigreet F3 session menu -> "Hyprland (uwsm-managed)").
+  # Flip to false to roll back to Hyprland as the greetd default.
   # See docs/mango-noctalia-experiment.md.
   #
 

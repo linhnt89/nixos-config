@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 
 let
   #
@@ -34,7 +34,7 @@ in
   # Hyprlock PAM authentication
   #
 
-  security.pam.services.hyprlock = {};
+  security.pam.services.hyprlock = { };
 
   #
   # Login manager
@@ -47,13 +47,23 @@ in
     useTextGreeter = true;
 
     settings = {
+      # Default login session: Hyprland through the UWSM wrapper. This is
+      # declared with lib.mkDefault so the MangoWM + Noctalia experiment
+      # (modules/nixos/mango-experiment.nix) can take the default over
+      # while its flag is enabled; Hyprland stays installed and selectable
+      # from the login screen either way (tuigreet session menu, F3 ->
+      # "Hyprland (uwsm-managed)"). The experiment module asserts this
+      # conditional-default boundary and scripts/test-mango-default-session.sh
+      # locks it in.
       default_session = {
         command =
-          "${pkgs.tuigreet}/bin/tuigreet "
-          + "--time "
-          + "--remember "
-          + "--asterisks "
-          + "--cmd ${hyprlandSession}";
+          lib.mkDefault (
+            "${pkgs.tuigreet}/bin/tuigreet "
+            + "--time "
+            + "--remember "
+            + "--asterisks "
+            + "--cmd ${hyprlandSession}"
+          );
 
         user = "greeter";
       };

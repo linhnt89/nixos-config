@@ -8,7 +8,7 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 * User: `linhnt`
 * Architecture: `x86_64-linux`
 * NixOS: `26.05`
-* Desktop: Hyprland
+* Desktop: MangoWM + Noctalia (experiment default) / Hyprland fallback
 * Session manager: UWSM
 * Login manager: greetd + tuigreet
 * Home configuration: Home Manager
@@ -116,13 +116,15 @@ fonts.nix
 hyprland.nix
     Hyprland
     UWSM
-    greetd / tuigreet
+    greetd / tuigreet (Hyprland default session, lib.mkDefault)
     Hyprlock PAM integration
 
 mango-experiment.nix
-    opt-in MangoWM + Noctalia packages
+    MangoWM + Noctalia experiment (single flag)
     portal and session wiring
-    manual-session guard
+    greetd default session switch (Mango via UWSM when enabled;
+    Hyprland stays selectable at login)
+    conditional-default assertions
 
 ssh.nix
     OpenSSH server (key-only)
@@ -217,8 +219,9 @@ herdr.nix
 ```
 
 `home/linhnt.nix` is the Home Manager entry point and imports the regular user
-modules. The opt-in `experiment.nix` module is imported by the NixOS experiment
-module only when its flag is enabled.
+modules. The gated `experiment.nix` module is imported by the NixOS experiment
+module only when its flag is enabled (it generates the Mango/Noctalia configs
+read by the default Mango login session).
 
 The native Hyprland Lua configuration is:
 
@@ -502,7 +505,7 @@ At startup, select a previous NixOS generation from the systemd-boot menu.
 
 ## Hyprland session
 
-The graphical session starts through:
+The graphical (default) session starts through:
 
 ```text
 greetd
@@ -517,6 +520,24 @@ start-hyprland
   ↓
 Hyprland
 ```
+
+With the MangoWM + Noctalia experiment enabled (the host default), the greetd
+default session is instead:
+
+```text
+greetd
+  ↓
+tuigreet
+  ↓
+UWSM
+  ↓
+mango.desktop
+  ↓
+Mango
+```
+
+To start Hyprland from the login screen, press F3 in tuigreet and select
+**"Hyprland (uwsm-managed)"** — the choice applies to that login only.
 
 Do not start the Hyprland binary directly for the normal session.
 

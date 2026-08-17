@@ -1,10 +1,11 @@
-# MangoWM + Noctalia experiment (Phase 0)
+# MangoWM + Noctalia experiment (default login session)
 
-Bounded, parallel-opt-in desktop experiment on MetaCube: **MangoWM** as
-compositor with **Noctalia v5** owning bar, notifications, launcher, OSD,
-lock screen, wallpaper and settings. The stable Hyprland session, greetd and
-boot are untouched; Mango is entered manually on an unused VT. Same-user
-Hyprland and Mango sessions are sequential, never concurrent.
+**MangoWM** as compositor with **Noctalia v5** owning bar, notifications,
+launcher, OSD, lock screen, wallpaper and settings is the **greetd default
+login session** while the experiment flag is enabled. **Hyprland** remains
+installed and selectable from the login screen; greetd starts exactly one
+session per login, so same-user Hyprland and Mango sessions stay sequential,
+never concurrent.
 
 This document is the runbook for the experiment. The original research is the
 scout report (`nixos-mangowm-noctalia-scout`); the decisions gating later
@@ -25,9 +26,10 @@ Module layout (all gated by that flag; inert when off):
 
 | File | Role |
 |---|---|
-| `modules/nixos/mango-experiment.nix` | flag definition, pinned unstable Mango/Noctalia packages, portal/session wiring, greetd no-change guard assertion, and the Home Manager bridge |
+| `modules/nixos/mango-experiment.nix` | flag definition, pinned unstable Mango/Noctalia packages, portal/session wiring, greetd default-session switch (Mango via UWSM), conditional-default assertions |
 | `home/modules/experiment.nix` | generates `~/.config/mango/config.conf`, `~/.config/noctalia/config.toml` and `~/.config/noctalia/palettes/MetaCube.json` from `home/theme.nix` design tokens |
-| `scripts/validate-mango-session.sh` | Phase-1 validation checklist (offline `--static` mode + in-session probes) |
+| `scripts/validate-mango-session.sh` | validation checklist (offline `--static` mode + in-session probes) |
+| `scripts/test-mango-default-session.sh` | conditional-default + UWSM-path regression tests (wired into `scripts/check.sh`) |
 
 With the flag off the toplevel build is unchanged (verified by store-path
 comparison). No new flake inputs; packages come from the existing pinned
@@ -42,21 +44,44 @@ Explicitly bounded to:
    the pinned `nixpkgs-unstable` input. Noctalia has no systemd unit here; it
    is started by Mango's `exec-once`.
 2. `xdg.portal` wiring (wlr/gtk) and a display-manager session entry for
-   Mango.
-3. A build-time assertion that greetd's default session command does not
-   mention mango.
+   Mango (which also makes Mango selectable from the login screen).
+3. The greetd default session command now starts Mango through the UWSM
+   wrapper (`uwsm start -e -D mango mango.desktop`), replacing the Hyprland
+   default. `modules/nixos/hyprland.nix` declares its default with
+   `lib.mkDefault`, so the experiment module takes it over while the flag is
+   on and Hyprland comes back as the default when the flag is off.
 
-Everything else is user-scope (config files in the home directory). greetd,
-boot, kernel params, systemd system units, and the Hyprland stack
+Everything else is user-scope (config files in the home directory). boot,
+kernel params, systemd system units, and the Hyprland stack
 (`modules/nixos/hyprland.nix`, `home/hyprland.lua`, Waybar/SwayNC/Fuzzel/
-Hyprlock/Hypridle/Hyprpaper) are untouched and stay installed. The retained
-Hyprland user services are conditioned on `XDG_CURRENT_DESKTOP` and are
-skipped for the manual Mango session, while remaining active for Hyprland.
-That condition is only a fallback guard; it does not isolate two concurrent
-sessions. Log out of Hyprland completely before starting Mango, and use the
-validation script's `--preflight` check on the fresh VT login.
+Hyprlock/Hypridle/Hyprpaper) stay installed. The retained Hyprland user
+services are conditioned on `XDG_CURRENT_DESKTOP` (`*:mango:*` skips them)
+and are therefore skipped in the Mango session while remaining active when
+Hyprland is chosen explicitly. That condition is only a fallback guard; it
+does not isolate two concurrent sessions. greetd starts exactly one session
+command per login, so concurrency cannot arise — the module's
+conditional-default assertions fail the build if the default command ever
+launches both sessions or drifts from the flag.
 No additional Noctalia recommended services are added, avoiding
 machine-global `upower`/`power-profiles-daemon` dependencies.
+
+The default command is `tuigreet --time --remember --asterisks --cmd
+<start-mango-uwsm>`; the wrapper script is the same shape as Hyprland's
+(`modules/nixos/hyprland.nix`) and must never exec the bare `mango` binary —
+UWSM is what applies the `mango` plugin
+(`XDG_CURRENT_DESKTOP=mango:wlroots`), which the per-session service
+conditions above rely on. `scripts/test-mango-default-session.sh` locks in
+both the conditional default and the UWSM path.
+
+## Choosing Hyprland from the login screen
+
+At the greetd login screen (tuigreet), press **F3** to open the session
+menu and pick **"Hyprland (uwsm-managed)"** (the plain "Hyprland" entry also
+exists but does not go through UWSM — prefer the uwsm-managed entry, which
+keeps the same session environment the stable session always had). The
+choice applies to that login only: after logout, greetd returns with Mango
+as the default again. F2 opens a free-form command prompt if you want to
+start something else entirely.
 
 ## Bluetooth in the Mango session
 
@@ -71,7 +96,9 @@ the experiment suppresses the applet in Mango only:
   `services.blueman.enable`) with `NotShowIn=mango`. The XDG autostart search
   order gives the user-level file precedence, and systemd >= 260 converts
   `NotShowIn=` into an `ExecCondition=` evaluated at service start, so the
-  applet is skipped exactly when `XDG_CURRENT_DESKTOP` contains mango.
+  applet is skipped exactly when `XDG_CURRENT_DESKTOP` contains mango — the
+  same per-session boundary as the fallback-service condition — and still
+  starts in Hyprland.
 - Noctalia's built-in Bluetooth widget is the Mango Bluetooth UI and is
   untouched; the general `tray` widget stays, so other tray applications are
   unaffected.
@@ -88,51 +115,34 @@ on and is absent when off.
 ## Build boundary
 
 The host now sets the flag on, so the plain toplevel build exercises the
-experiment state directly. This remains build-only: do not run
-`nixos-rebuild test` or `nixos-rebuild switch`, activate Home Manager, or
-enter the Mango session from an unmerged branch.
+experiment state directly (including the conditional-default assertions).
+This remains build-only: do not run `nixos-rebuild test` or
+`nixos-rebuild switch`, activate Home Manager, or enter the Mango session
+from an unmerged branch.
 
 ```sh
 sudo nixos-rebuild build --flake .#metacube
 ```
 
-## Captain-approved Phase 1 entry
+## Login and validation
 
-Only after the change is merged, the captain approves activation, and the
-command is run from the canonical `main` checkout with the approved flag-on
-configuration, may the machine be activated:
+After this change is merged **and activated by the captain**, Mango is simply
+the default: log in normally at the greetd screen and the Mango session
+starts through UWSM with Noctalia as the shell. If you were in a Hyprland
+login, log out completely and wait for greetd before logging into the Mango
+session (F3 at the login screen selects Hyprland explicitly).
 
-```sh
-sudo nixos-rebuild switch --flake .#metacube
-```
-
-Before starting Mango, end the Hyprland login completely. Log out of
-Hyprland and wait for greetd to return; do not merely switch away from it or
-leave it running on another VT. On the fresh unused VT (Ctrl+Alt+F2), log in
-as `linhnt`, run the preflight check, and require it to report no Hyprland
-process, no other same-user graphical session, and no active fallback service:
+The manual VT entry (`exec uwsm start -e -D mango mango.desktop` from a
+fresh unused VT) remains supported as a debug path and is what the preflight
+check guards, but it is no longer required for a normal login:
 
 ```sh
-scripts/validate-mango-session.sh --preflight
+scripts/validate-mango-session.sh --preflight   # only when entering from a VT
 ```
 
 The preflight refuses to run from inside a graphical session (exit 2 with a
-fresh-VT message); if that happens, the Hyprland login is still active — log
-out completely and rerun from the fresh VT.
-
-Only then run the following manual opt-in command. This command is also
-captain-approved experiment activity; it must not be wired into greetd:
-
-```sh
-exec uwsm start -e -D mango mango.desktop
-```
-
-`-e -D mango` gives the UWSM session the compositor marker used to keep the
-Hyprland fallback services out of the Mango session. UWSM loads its `mango`
-plugin, Mango exports `MANGO_INSTANCE_SIGNATURE` to its clients, and Mango's
-config starts Noctalia via `exec-once`. Ctrl+Alt+F1 must show greetd rather
-than an already-running Hyprland session; leave Mango before starting
-Hyprland again. Exit with `mmsg dispatch quit` (or Super+M).
+fresh-VT message); if that happens, a graphical session is still active —
+log out completely and rerun from the fresh VT.
 
 ## Validation
 
@@ -151,14 +161,14 @@ scripts/validate-mango-session.sh --lock-loop 20      # Noctalia #3848
 scripts/validate-mango-session.sh --suspend-probe     # Mango #1017
 ```
 
-The switch, Mango entry, lock loop, and suspend probe require captain approval.
-Build gates per repo AGENTS.md: `sudo nixos-rebuild build --flake
-.#metacube` must stay green at every step.
+The switch and the Mango entry require captain approval. Build gates per repo
+AGENTS.md: `scripts/check.sh` (static checks + `nix flake check` +
+non-activating toplevel build) must stay green at every step.
 
-## Success criteria (all must hold to continue past Phase 1)
+## Success criteria (Phase 1 — completed 2026-08-16)
 
-1. Mango session boots via UWSM from an unused VT with Noctalia as shell;
-   `mmsg get version` and `noctalia msg …` IPC respond.
+1. Mango session boots via UWSM with Noctalia as shell; `mmsg get version`
+   and `noctalia msg …` IPC respond.
 2. Daily surfaces work on Mango: bar + tray, launcher, notifications,
    control center, wallpaper, OSDs, clipboard history, screenshot.
 3. 20 consecutive lock→unlock cycles with zero hangs (Noctalia #3848);
@@ -173,6 +183,11 @@ Build gates per repo AGENTS.md: `sudo nixos-rebuild build --flake
    non-comparable until all six fallback processes are present and measured.
 8. Branch stays buildable at every step.
 
+Since the default switched to Mango, ongoing checks are: greetd boots to
+Mango; Hyprland is reachable via the login screen session menu; the
+conditional-default assertions and `scripts/test-mango-default-session.sh`
+pass; daily sessions stay regression-free.
+
 ## Failure criteria (stop and roll back)
 
 - Any machine-global breakage (greetd/login, boot, systemd system units).
@@ -185,9 +200,12 @@ Build gates per repo AGENTS.md: `sudo nixos-rebuild build --flake
 
 One-line flip: set the flag back to `false`, then, with captain approval, run
 `sudo nixos-rebuild switch --flake .#metacube` from the canonical `main`
-checkout. Optionally remove the home config files (`~/.config/mango/`,
-`~/.config/noctalia/`) or restore the previous Home Manager generation. The
-stable session was never touched, so no system restore is involved.
+checkout. The greetd default then returns to the Hyprland UWSM session
+(`modules/nixos/hyprland.nix`), the Mango packages/portal/session wiring and
+home config files stop being generated, and the Hyprland stack — which was
+never removed — remains exactly as before. Optionally remove the home config
+files (`~/.config/mango/`, `~/.config/noctalia/`) or restore the previous
+Home Manager generation. No system restore is involved.
 
 ## Upstream watchlist (open at Phase 0, 2026-08-16)
 
