@@ -1,13 +1,24 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 
+#
+# Local adapter for the portable shell profile.
+#
+# The shared portable shell layer is imported from the private
+# nixdev-config flake in flake.nix (`nixdev-config.homeManagerModules.desktop`
+# -> home/modules/shell.nix there): it owns the *enablement* of zsh /
+# starship / fzf / bat / eza and the common package set (fd, ripgrep, jq,
+# tree, zip, unzip, curl, wget, yq-go, just, Python, Node, shellcheck, ...).
+# See docs/nixdev-config-integration.md for the ownership boundary.
+#
+# This adapter carries ONLY the MetaCube-personal shell preferences that
+# the portable profile deliberately leaves out.
 {
+
   #
-  # Zsh
+  # Zsh (enabled by the portable profile) — personal behavior
   #
 
   programs.zsh = {
-    enable = true;
-
     enableCompletion = true;
 
     autosuggestion.enable = true;
@@ -29,13 +40,11 @@
   };
 
   #
-  # Prompt
+  # Starship (enabled + shell integrations by the portable profile)
+  # — personal settings only
   #
 
   programs.starship = {
-    enable = true;
-    enableZshIntegration = true;
-
     settings = {
       add_newline = false;
       command_timeout = 1000;
@@ -43,13 +52,11 @@
   };
 
   #
-  # Fuzzy finder
+  # Fzf (enabled + shell integrations by the portable profile)
+  # — personal widget behavior only
   #
 
   programs.fzf = {
-    enable = true;
-    enableZshIntegration = true;
-
     fileWidgetCommand =
       "${pkgs.fd}/bin/fd "
       + "--type f "
@@ -70,35 +77,13 @@
   };
 
   #
-  # CLI viewers
+  # Eza — one desktop-only override
+  #
+  # The portable profile enables eza with bash+zsh integration; on this
+  # desktop the zsh integration is deliberately OFF so the traditional
+  # `ls` alias stays untouched. Everything else (icons, git column) keeps
+  # the portable defaults.
   #
 
-  programs.bat = {
-    enable = true;
-
-    config = {
-      pager = "less -FR";
-    };
-  };
-
-  programs.eza = {
-    enable = true;
-
-    # Keep traditional ls untouched.
-    enableZshIntegration = false;
-  };
-
-  #
-  # General CLI utilities
-  #
-
-  home.packages = [
-    pkgs.ripgrep
-    pkgs.fd
-    pkgs.jq
-    pkgs.tree
-
-    pkgs.zip
-    pkgs.unzip
-  ];
+  programs.eza.enableZshIntegration = lib.mkForce false;
 }

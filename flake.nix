@@ -13,6 +13,18 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Private portable Home Manager modules/profiles, shared with the work
+    # WSL2 laptop. The `desktop` role profile provides the portable
+    # shell/development layer (zsh/starship/fzf/bat/eza/direnv/delta/git
+    # structure + the shared common package set) and `gh` — never `glab`.
+    #
+    # PRIVATE INPUT: fetching it requires a GitHub access-token in the
+    # effective Nix configuration (`access-tokens = github.com=...` in
+    # the operator's ~/.config/nix/nix.conf or NIX_CONFIG, fed by `gh auth
+    # login`). No token is ever committed. See
+    # docs/nixdev-config-integration.md for setup, update, and rollback.
+    nixdev-config.url = "github:linhnt89/nixdev-config";
+
     treehouse = {
       url = "github:kunchenguid/treehouse";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -39,6 +51,7 @@
       treehouse,
       herdr,
       noMistakes,
+      nixdev-config,
       ...
     }:
     let
@@ -75,8 +88,17 @@
                   ;
               };
 
-              home-manager.users.linhnt =
-                import ./home/linhnt.nix;
+              # Desktop role from the private nixdev-config flake supplies
+              # the portable shell/dev layer (shell/starship/fzf/bat/eza/
+              # direnv/delta/git structure, common packages incl. Python/
+              # Node) plus `gh`. Everything else stays local: the modules
+              # under ./home/modules are MetaCube-personal adapters.
+              home-manager.users.linhnt = {
+                imports = [
+                  nixdev-config.homeManagerModules.desktop
+                  ./home/linhnt.nix
+                ];
+              };
             }
           ];
         };

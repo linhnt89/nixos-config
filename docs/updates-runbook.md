@@ -29,6 +29,7 @@ procedure; the README section "Updating dependencies" is the short form.
 | Pi lane (unstable) | `nixpkgs-unstable` input | Dependabot individual PR or `nix flake update nixpkgs-unstable` |
 | Home Manager | `home-manager` (`release-26.05`, follows nixpkgs) | moves with `nixpkgs`; Dependabot |
 | Treehouse | `treehouse` (follows nixpkgs) | Dependabot |
+| nixdev-config | `nixdev-config` (private repo, `github:linhnt89/nixdev-config`; desktop's portable Home Manager layer) | manual only — Dependabot cannot fetch private inputs; see `docs/nixdev-config-integration.md` |
 | Herdr | `herdr` tag (`v0.8.0`) | deliberate `flake.nix` ref edit (Dependabot can propose it) |
 | no-mistakes | tarball URL in `flake.nix` | `scripts/update-no-mistakes.sh` only (Dependabot cannot bump tarball inputs) |
 | Node CLIs | `home/firstmate/node-tools/package.json` + `package-lock.json` (exact pins) | Dependabot npm PR or `npm install --package-lock-only` |
@@ -113,6 +114,10 @@ nix flake update nixpkgs-unstable
 # Herdr tag bump (e.g. v0.9.0): edit flake.nix first, then re-lock:
 #   herdr.url = "github:herdrdev/herdr/v0.9.0";
 nix flake lock --update-input herdr
+
+# nixdev-config (private input; needs a GitHub access-token for the
+# fetch — see docs/nixdev-config-integration.md for setup and boundary):
+GH_TOKEN=$(gh auth token) nix flake lock --update-input nixdev-config
 
 # Node CLIs: let Dependabot do it, or regenerate the lock (exact pins;
 # integrity hashes live in package-lock.json, so Nix needs no hashes):
