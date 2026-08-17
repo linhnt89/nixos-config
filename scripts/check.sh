@@ -10,16 +10,13 @@
 #   3. a NON-ACTIVATING build of the metacube NixOS toplevel
 #   4. full EVALUATION of the Home Manager user configuration
 #      (instantiates every imported Home Manager module, including
-#      the private nixdev-config desktop role modules)
+#      the nixdev-config desktop role modules)
 #
 # It never switches, tests, or activates the system. This is the local
 # check every change — including Dependabot PRs — must pass before
 # merge. CI (workflow_dispatch only) is an optional independent
-# fallback, not a required check.
-#
-# Private-input note: the nixdev-config flake input is a private GitHub
-# repo; fetching it needs `access-tokens = github.com=...` in the
-# effective Nix config (see the "private input access" section below).
+# fallback, not a required check. The nixdev-config flake input is a
+# public repo and fetches without any GitHub access-token.
 #
 # Usage:
 #   scripts/check.sh [--nix-build-only] [--skip-build] [-h|--help]
@@ -70,36 +67,6 @@ while [[ $# -gt 0 ]]; do
     *) echo "error: unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
-
-# --- private input access ------------------------------------------------
-#
-# The nixdev-config input is a PRIVATE GitHub repo. Fetching it needs a
-# GitHub access-token in the effective Nix configuration:
-#   * operator machine: `access-tokens = github.com=<token>` in
-#     ~/.config/nix/nix.conf (and /root/.config/nix/nix.conf for sudo
-#     builds), where <token> comes from `gh auth login` + `gh auth token`
-# When a token is present in the environment (GH_TOKEN / GITHUB_TOKEN) it
-# is forwarded into NIX_CONFIG so `GH_TOKEN=... scripts/check.sh` just
-# works. No token is ever committed; the flake declares no secret and
-# CI uses no secrets (it may fail at the fetch step without
-# operator-provided runner authentication — local validation on the
-# desktop is authoritative).
-# See docs/nixdev-config-integration.md.
-
-github_token=""
-[[ -n "${GH_TOKEN:-}" ]] && github_token="$GH_TOKEN"
-[[ -n "${GITHUB_TOKEN:-}" ]] && github_token="${GITHUB_TOKEN:-$github_token}"
-if [[ -n "$github_token" ]]; then
-  export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG
-}access-tokens = github.com=$github_token"
-fi
-if [[ -z "$github_token" ]] \
-  && ! nix config show access-tokens 2>/dev/null | grep -q 'github\.com'; then
-  echo '  warn: no GitHub access-token for the private nixdev-config input found' >&2
-  echo '        (set GH_TOKEN/GITHUB_TOKEN, or access-tokens in nix.conf);' >&2
-  echo '        builds needing a fresh fetch of that input will fail.' >&2
-  echo '        See docs/nixdev-config-integration.md.' >&2
-fi
 
 failures=0
 

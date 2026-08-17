@@ -1,8 +1,9 @@
-# nixdev-config integration (private portable Home Manager layer)
+# nixdev-config integration (public portable Home Manager layer)
 
-The desktop Home Manager configuration imports the **desktop role** of the
-private repo `linhnt89/nixdev-config` (the same repo that drives the work
-WSL2 laptop's dev environment). This page is the runbook for that input.
+The desktop Home Manager configuration imports the **desktop role** of
+the public repo `linhnt89/nixdev-config` (the same repo that drives the
+work WSL2 laptop's dev environment). This page is the runbook for that
+input.
 
 ## What comes from nixdev-config (`desktop` role)
 
@@ -43,23 +44,16 @@ openssh, lazygit, yq-go, just to the user profile. All are role-neutral
 portable defaults owned by nixdev-config; the desktop kept every personal
 preference via the adapters.
 
-## Private-input authentication boundary
+## Fetching the input
 
-`nixdev-config` is a **private GitHub repository**. `github:` flake inputs
-for private repos are fetched with the standard Nix `access-tokens`
-mechanism (Nix manual, "GitHub access tokens"):
-
-```ini
-# ~/.config/nix/nix.conf         (operator user)
-# /root/.config/nix/nix.conf     (for sudo nixos-rebuild builds/switches)
-access-tokens = github.com=<token>
-```
-
-`<token>` comes from the existing operator GitHub authentication:
+`nixdev-config` is a **public GitHub repository**. The `github:` flake
+input needs no GitHub authentication — no `access-tokens` entry in
+`nix.conf`, no `NIX_CONFIG` override, no `GH_TOKEN`/`GITHUB_TOKEN`
+forwarding:
 
 ```bash
-gh auth login        # once; scopes need repo read on linhnt89/nixdev-config
-gh auth token        # prints the token to paste into nix.conf (chmod 600)
+nix flake lock --update-input nixdev-config   # re-pin to the latest rev
+nix build .#nixosConfigurations.metacube.config.system.build.toplevel
 ```
 
 Rules:
@@ -67,28 +61,15 @@ Rules:
 - **Never commit a token, SSH key, credential-bearing URL, or absolute
   home path** for this input. The flake declares only
   `url = "github:linhnt89/nixdev-config"`; `flake.lock` pins the rev +
-  narHash and contains no secret. The no-secrets scan in `scripts/check.sh`
-  enforces the same boundary repo-wide.
+  narHash and contains no secret. The same boundary is enforced repo-wide
+  by the no-secrets rule in `AGENTS.md`.
 - **Never silently substitute a machine-local `path:` input** in the
   committed flake. The input must resolve reproducibly from the pinned
-  lock entry with operator authentication.
-- The **one-shot alternative** for ad-hoc builds without editing nix.conf:
-
-  ```bash
-  NIX_CONFIG="access-tokens = github.com=$(gh auth token)" nix build ...
-  ```
-
-- `scripts/check.sh` forwards `GH_TOKEN`/`GITHUB_TOKEN` into `NIX_CONFIG`
-  automatically, so `GH_TOKEN=$(gh auth token) scripts/check.sh` works
-  with no nix.conf edits.
+  lock entry for any machine, without local state.
 
 Once a rev is fetched it is cached in the Nix store; later builds reuse
-the cache. A fresh fetch (new rev, GC'd cache, new machine) needs the
-token again.
-
-Permissions needed for `<token>`: read access to `linhnt89/nixdev-config`
-only (a fine-grained PAT with `Contents: Read` on that repo, or a classic
-PAT with `repo` scope for the account).
+the cache. Because the repository is public, a fresh fetch (new rev, GC'd
+cache, new machine, CI runner) never needs a token.
 
 ## Update procedure
 
@@ -96,24 +77,20 @@ nixdev-config advances deliberately (its own PRs) and is re-pinned here
 only when the new revision is wanted:
 
 ```bash
-# From a clean checkout, as a user with GitHub auth:
-NIX_CONFIG="access-tokens = github.com=$(gh auth token)" \
-  nix flake lock --update-input nixdev-config
-# (or simply `GH_TOKEN=$(gh auth token) nix flake lock --update-input nixdev-config`
-#  — nothing in this repo sets the token itself)
+# From a clean checkout:
+nix flake lock --update-input nixdev-config
 
-GH_TOKEN=$(gh auth token) scripts/check.sh --nix-build-only
+scripts/check.sh --nix-build-only
 ```
 
 Commit `flake.lock` together with the change — never a bare lock refresh.
 A rolling update of every input is `nix flake update`, but the deliberate
 way to move this lane is `--update-input nixdev-config`.
 
-**Dependabot cannot update this input** (its token is scoped to this repo
-and cannot fetch a different private repository — it is listed in
-`.github/dependabot.yml` `ignore` for that reason). The weekly staleness
-report shows the input's locked age; its upstream lookup degrades to
-"unresolved" without a cross-repo token. Updating nixdev-config also
+Since the input is public, Dependabot can also propose nixdev-config
+updates like any other `github:` input (it is no longer listed in the
+`.github/dependabot.yml` `ignore` list). Validate those PRs with
+`scripts/check.sh` exactly like the stable lane. Updating nixdev-config
 does **not** cascade to any other pinned input here — its own inputs
 (nixpkgs, home-manager) follow only inside the nixdev-config flake.
 

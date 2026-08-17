@@ -19,7 +19,7 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 ```text
 .
 ├── flake.nix
-│         nixdev-config input: private portable Home Manager layer
+│         nixdev-config input: public portable Home Manager layer
 ├── flake.lock
 │
 ├── hosts/
@@ -84,12 +84,12 @@ The rebuild target is therefore:
 
 The flake should stay relatively small.
 
-It also imports the **desktop role** of the private `nixdev-config` flake
+It also imports the **desktop role** of the public `nixdev-config` flake
 (`nixdev-config.homeManagerModules.desktop`) into the Home Manager user
 configuration: the portable shell/development layer and `gh` (never
-`glab`). That input is private; fetching it needs a GitHub access-token in
-the operator's Nix configuration — never a committed token. See
-`docs/nixdev-config-integration.md` for setup, updates, and rollback.
+`glab`). The input is a public GitHub repository, so fetching it needs no
+access-token; credentials never belong in this repository. See
+`docs/nixdev-config-integration.md` for ownership, updates, and rollback.
 
 ### NixOS modules
 
@@ -243,7 +243,7 @@ herdr.nix
 modules. The gated `experiment.nix` module is imported by the NixOS experiment
 module only when its flag is enabled (it generates the Mango/Noctalia configs
 read by the default Mango login session). The portable layer itself is
-imported from the private `nixdev-config` desktop role in `flake.nix`
+imported from the `nixdev-config` desktop role in `flake.nix`
 (see `docs/nixdev-config-integration.md`).
 
 The native Hyprland Lua configuration is:
@@ -267,8 +267,7 @@ docs/lan-laptop-access.md
     over RDP (Remmina client)
 
 docs/nixdev-config-integration.md
-    Private nixdev-config input: ownership boundary, authentication
-    setup, update procedure, rollback
+    nixdev-config input: ownership boundary, update procedure, rollback
 ```
 
 ## Where should a new setting go?
@@ -711,9 +710,9 @@ scripts/check-stale.sh          # read-only staleness report
 scripts/update-no-mistakes.sh   # bump the noMistakes tarball pin (Dependabot cannot)
 ```
 
-The private `nixdev-config` input is the one lane Dependabot cannot
-touch (its token is scoped to this repo): it moves manually with
-`nix flake lock --update-input nixdev-config`, and fetching it needs a
+The `nixdev-config` input is public, so Dependabot can propose its
+updates like any other `github:` input; it can also move manually with
+`nix flake lock --update-input nixdev-config`. Fetching it needs no
 GitHub access-token (see `docs/nixdev-config-integration.md`).
 
 Inspect the current inputs with:
