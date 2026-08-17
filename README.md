@@ -53,6 +53,7 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │   └── validate-mango-session.sh
 │
 └── docs/
+    ├── lan-laptop-access.md
     ├── mango-noctalia-experiment.md
     └── moshi-herdr.md
 ```
@@ -235,6 +236,10 @@ docs/mango-noctalia-experiment.md
 docs/moshi-herdr.md
     Connecting the Moshi Android app to MetaCube
     and attaching to Herdr sessions
+
+docs/lan-laptop-access.md
+    LAN remote use of the Windows 11 Pro laptop
+    over RDP (Remmina client)
 ```
 
 ## Where should a new setting go?

@@ -71,6 +71,18 @@
     pkgs.networkmanagerapplet
 
     #
+    # Remote desktop (client)
+    #
+    # RDP client for the Windows 11 Pro laptop on the trusted LAN.
+    # Client only: no RDP server, no inbound firewall rule, no
+    # Tailscale exposure, no fixed laptop address in this repo.
+    # FreeRDP (the RDP engine) arrives as remmina's own dependency.
+    # See docs/lan-laptop-access.md.
+    #
+
+    pkgs.remmina
+
+    #
     # Archives
     #
 
