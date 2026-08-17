@@ -93,6 +93,12 @@
     #
 
     pkgs.imv
+
+    #
+    # System monitor
+    #
+
+    pkgs.btop
   ];
 
   #
