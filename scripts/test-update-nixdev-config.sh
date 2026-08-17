@@ -16,6 +16,11 @@
 #   G. already-up-to-date          (exit 0, no branch, no PR)
 #   H. happy path end-to-end       (lock bump -> validate -> push -> PR ->
 #      squash merge -> canonical fast-forwarded clean at the merged commit)
+#   J. path resolution             (\$HOME defaults, explicit overrides,
+#      absent-resolves-to-nothing, no hardcoded home paths)
+#   K. portable paths end-to-end   (default canonical+sibling under \$HOME;
+#      explicit overrides; gh-axi API fallback; missing explicit sibling
+#      refused before any mutation)
 #
 # ALL OFFLINE: no network, no real nix, no real gh-axi, no GitHub
 # mutations. GitHub interactions are stubbed via a fake gh-axi in a temp
@@ -61,6 +66,7 @@ pass() {
 }
 
 TD="$(mktemp -d)"
+TD="$(cd "$TD" && pwd -P)"
 trap 'rm -rf "$TD"' EXIT
 BIN="$TD/bin"
 mkdir -p "$BIN"
@@ -141,8 +147,8 @@ printf 'not json' > "$TD/bad.json"
 # ---------------------------------------------------------------------------
 
 mk_fixture() {
-  local canon="$TD/fixture" bare="$TD/origin.git" fbin="$TD/fakebin"
-  rm -rf "$canon" "$bare" "$fbin"
+  local canon="${1:-$TD/fixture}" bare="$TD/origin.git" fbin="$TD/fakebin"
+  rm -rf "$canon" "$bare" "$fbin" "$TD/fake-state"
   mkdir -p "$canon/scripts" "$fbin"
 
   git init -q -b main "$canon"
@@ -221,6 +227,8 @@ case "\$1" in
     done
     if [[ "\$path" == "/repos/linhnt89/nixos-config" ]] && [[ "\$expr" == ".full_name" ]]; then
       val="linhnt89/nixos-config"
+    elif [[ "\$path" == /repos/linhnt89/nixdev-config/commits/HEAD ]] && [[ "\$expr" == ".sha" ]]; then
+      val="\${FAKE_ND_HEAD:-$REV_ND_NEW}"
     elif [[ "\$path" == /repos/linhnt89/nixos-config/pulls?state=open* ]]; then
       if [[ -f "\$state_dir/created" ]]; then
         val="1"
@@ -282,26 +290,75 @@ EOF
   chmod +x "$fbin/gh-axi"
 }
 
+# mk_nd_fixture SRC_CHECKOUT BARE_ORIGIN -> a real local worktree that
+# stands in for the public linhnt89/nixdev-config sibling source checkout:
+# a `main` branch pushed to a local bare `origin` behind a url.* insteadOf
+# alias (offline; `git ls-remote --symref origin HEAD` in the updater
+# resolves the upstream head against this mirror).
+mk_nd_fixture() {
+  local nd="$1" nd_bare="$2"
+  rm -rf "$nd" "$nd_bare"
+  mkdir -p "$nd"
+  git init -q -b main "$nd"
+  git -C "$nd" config user.email test@example.invalid
+  git -C "$nd" config user.name "fixture test"
+  cat > "$nd/flake.nix" <<'NEOF'
+{
+  description = "nixdev-config fixture source";
+  inputs = {};
+  outputs = { self }: { };
+}
+NEOF
+  git -C "$nd" add -A
+  git -C "$nd" commit -q -m "fixture nixdev-config source"
+  git init -q --bare -b main "$nd_bare"
+  git -C "$nd" remote add origin "https://github.com/linhnt89/nixdev-config"
+  git -C "$nd" config "url.file://$nd_bare.insteadOf" "https://github.com/linhnt89/nixdev-config"
+  git -C "$nd" push -q origin main
+}
+
 # run_updater -> runs the real updater against the fixture with the fixed
 # test env. Scenario overrides are exported by the caller first.
+#   - NIXDEV_UPDATE_TARGET_REV exported-empty forces the sibling/gh-axi
+#     upstream-head resolution path; exported non-empty pins the rev;
+#     unexported falls back to REV_ND_NEW (existing scenarios).
+#   - NIXDEV_UPDATE_CANONICAL_REPO exported wins; HOME_DIR=<dir>
+#     exercises the $HOME default under $TD/<dir>; otherwise the canonical
+#     fixture at $TD/fixture is used explicitly.
+#   - NIXDEV_UPDATE_NIXDEV_SRC exported is forwarded (sibling override).
 run_updater() {
   local envs=(
-    NIXDEV_UPDATE_CANONICAL_REPO="$TD/fixture"
     NIXDEV_UPDATE_GH_AXI_BIN="$TD/fakebin/gh-axi"
     NIXDEV_UPDATE_NIX_BIN="$TD/fakebin/nix"
-    NIXDEV_UPDATE_TARGET_REV="${NIXDEV_UPDATE_TARGET_REV:-$REV_ND_NEW}"
     NIXDEV_UPDATE_RETRIES="${NIXDEV_UPDATE_RETRIES:-1}"
     NIXDEV_UPDATE_RETRY_DELAY=0
     NIXDEV_UPDATE_POLL_TRIES=3
     NIXDEV_UPDATE_POLL_DELAY=0
-    NIXDEV_UPDATE_TEST_NEW_LOCK="$LOCK_DIR/new.json"
+    NIXDEV_UPDATE_TEST_NEW_LOCK="${NIXDEV_UPDATE_TEST_NEW_LOCK:-$LOCK_DIR/new.json}"
     FAKE_LOG="$FAKE_LOG"
-    FAKE_TARGET_REV="$REV_ND_NEW"
+    FAKE_TARGET_REV="${FAKE_TARGET_REV:-$REV_ND_NEW}"
   )
+  local t="${NIXDEV_UPDATE_TARGET_REV+x}"
+  if [[ "$t" == "x" && -z "${NIXDEV_UPDATE_TARGET_REV}" ]]; then
+    : # explicit empty: exercise the sibling/gh-axi upstream-head resolution
+  elif [[ -n "${NIXDEV_UPDATE_TARGET_REV:-}" ]]; then
+    envs+=(NIXDEV_UPDATE_TARGET_REV="$NIXDEV_UPDATE_TARGET_REV")
+  else
+    envs+=(NIXDEV_UPDATE_TARGET_REV="$REV_ND_NEW")
+  fi
+  if [[ -n "${NIXDEV_UPDATE_CANONICAL_REPO:-}" ]]; then
+    envs+=(NIXDEV_UPDATE_CANONICAL_REPO="$NIXDEV_UPDATE_CANONICAL_REPO")
+  elif [[ -n "${HOME_DIR:-}" ]]; then
+    envs+=(HOME="$TD/$HOME_DIR")
+  else
+    envs+=(NIXDEV_UPDATE_CANONICAL_REPO="$TD/fixture")
+  fi
+  [[ -z "${NIXDEV_UPDATE_NIXDEV_SRC:-}" ]] || envs+=(NIXDEV_UPDATE_NIXDEV_SRC="$NIXDEV_UPDATE_NIXDEV_SRC")
   local v
   for v in FAKE_MERGE_FAIL FAKE_PR_HEAD_SHA FAKE_PR_MERGEABLE FAKE_PR_STATE \
            FAKE_PR_MERGED FAKE_PR_HEAD_REF FAKE_PR_BASE_REF \
-           FAKE_CHECK_MARKER FAKE_CHECK_RESULT FAKE_API_DOWN FAKE_API_FLAP; do
+           FAKE_CHECK_MARKER FAKE_CHECK_RESULT FAKE_API_DOWN FAKE_API_FLAP \
+           FAKE_ND_HEAD; do
     if [[ -n "${!v:-}" ]]; then
       envs+=("$v=${!v}")
     fi
@@ -544,6 +601,171 @@ ok=1
 grep -q 'call: pr merge' "$TD/logH" || { fail "PR was not merged (fake gh-axi log)"; ok=0; }
 [[ $ok -eq 1 ]] && pass "happy path end-to-end: validated, PR #1 squash-merged, canonical fast-forwarded clean at $new_sha"
 if [[ $ok -eq 0 ]]; then
+  dump_out
+fi
+
+# ---------------------------------------------------------------------------
+# J. path resolution: defaults, overrides, and no hardcoded home paths
+# ---------------------------------------------------------------------------
+
+echo '== J. path defaults, overrides, and no hardcoded home paths =='
+
+PT="$TD/pathtests"
+mkdir -p "$PT/homedef/firstmate/projects/nixos-config"
+mkdir -p "$PT/homedef/firstmate/projects/nixdev-config"
+mkdir -p "$PT/homeless" "$PT/override-a"
+
+# default canonical + sibling resolve under \$HOME (in a non-repo cwd so
+# the git-worktree discovery fallback cannot fire)
+out="$(cd "$TD" && HOME="$PT/homedef" "$UPDATER" --test-guard paths 2>&1)" && rc=0 || rc=$?
+if [[ $rc -eq 0 ]] \
+   && grep -qx "canonical=$PT/homedef/firstmate/projects/nixos-config" <<<"$out" \
+   && grep -qx "sibling=$PT/homedef/firstmate/projects/nixdev-config" <<<"$out"; then
+  pass "default paths resolve under \$HOME (firstmate/projects layout)"
+else
+  fail "default paths did NOT resolve under \$HOME"
+  dump_out
+fi
+
+# explicit overrides beat \$HOME defaults
+out="$(cd "$TD" && HOME="$PT/homedef" \
+  NIXDEV_UPDATE_CANONICAL_REPO="$PT/override-a" \
+  NIXDEV_UPDATE_NIXDEV_SRC="$PT/override-a" \
+  "$UPDATER" --test-guard paths 2>&1)" && rc=0 || rc=$?
+if [[ $rc -eq 0 ]] && grep -qx "canonical=$PT/override-a" <<<"$out" \
+   && grep -qx "sibling=$PT/override-a" <<<"$out"; then
+  pass "explicit overrides beat \$HOME defaults"
+else
+  fail "explicit overrides did NOT beat \$HOME defaults"
+  dump_out
+fi
+
+# no defaults and no overrides: nothing resolves (no hidden fallback repo)
+out="$(cd "$TD" && HOME="$PT/homeless" "$UPDATER" --test-guard paths 2>&1)" && rc=0 || rc=$?
+if grep -qx 'canonical_rc=1' <<<"$out" && grep -qx 'sibling_rc=1' <<<"$out" \
+   && grep -qx 'canonical=' <<<"$out" && grep -qx 'sibling=' <<<"$out"; then
+  pass "absent defaults/overrides resolve to nothing"
+else
+  fail "absent defaults/overrides did NOT resolve to nothing"
+  dump_out
+fi
+
+# no hardcoded home paths in tracked code/docs, and both overrides are
+# documented; every firstmate/projects reference is \$HOME-derived
+hd=0
+for f in scripts/update-nixdev-config.sh docs/updates-runbook.md \
+         docs/nixdev-config-integration.md README.md AGENTS.md; do
+  if grep -n '/ho[m]e/' "$f" >/dev/null 2>&1; then
+    echo "FAIL  hardcoded absolute home path in $f:" >&2
+    grep -n '/ho[m]e/' "$f" | sed 's/^/      /' >&2
+    hd=1
+  fi
+  if grep -n 'firstmate/projects' "$f" | grep -vE '\$HOME|\$\{HOME' >/dev/null 2>&1; then
+    echo "FAIL  non-\$HOME firstmate/projects path in $f:" >&2
+    grep -n 'firstmate/projects' "$f" | grep -vE '\$HOME|\$\{HOME' | sed 's/^/      /' >&2
+    hd=1
+  fi
+done
+grep -nE '/ho[m]e/' scripts/test-update-nixdev-config.sh \
+  | grep -vE '\$TD/home|\$PT/homedef' >/dev/null 2>&1 \
+  && { echo "FAIL  hardcoded absolute home path in test script" >&2; hd=1; }
+grep -q 'NIXDEV_UPDATE_NIXDEV_SRC' scripts/update-nixdev-config.sh || { echo "FAIL  script does not document NIXDEV_UPDATE_NIXDEV_SRC" >&2; hd=1; }
+grep -q 'NIXDEV_UPDATE_CANONICAL_REPO' docs/updates-runbook.md || { echo "FAIL  runbook does not document NIXDEV_UPDATE_CANONICAL_REPO" >&2; hd=1; }
+grep -q 'NIXDEV_UPDATE_NIXDEV_SRC' docs/updates-runbook.md || { echo "FAIL  runbook does not document NIXDEV_UPDATE_NIXDEV_SRC" >&2; hd=1; }
+if [[ $hd -eq 0 ]]; then
+  pass "no hardcoded home paths; both overrides documented in code and runbook"
+else
+  fail "hardcoded home paths or missing override documentation"
+fi
+# ---------------------------------------------------------------------------
+# K. portable default/override paths end-to-end + upstream-head resolution
+# ---------------------------------------------------------------------------
+
+echo '== K. default/override paths end-to-end; sibling/API upstream-head =='
+
+# K1: BOTH \$HOME defaults - canonical checkout and sibling nixdev-config
+# source under $TD/home/firstmate/projects/*; upstream head resolved from
+# the default sibling (no gh-axi nixdev-config API call).
+mkdir -p "$TD/home"
+mk_fixture "$TD/home/firstmate/projects/nixos-config"
+mk_nd_fixture "$TD/home/firstmate/projects/nixdev-config" "$TD/nd-origin.git"
+SIB_HEAD="$(git -C "$TD/home/firstmate/projects/nixdev-config" rev-parse main)"
+gen_lock "$LOCK_DIR/new-sib-k1.json" "$SIB_HEAD" "$REV_NPKG" "$REV_NPKG" "$REV_UN" \
+  "$REV_UN_INNER_NEW" "$REV_NPKG" "$REV_UN_INNER_NEW" "$REV_NPKG"
+export FAKE_LOG="$TD/logK1" NIXDEV_UPDATE_TARGET_REV="" \
+  NIXDEV_UPDATE_TEST_NEW_LOCK="$LOCK_DIR/new-sib-k1.json" FAKE_TARGET_REV="$SIB_HEAD"
+BASE_SHA="$(git -C "$TD/home/firstmate/projects/nixos-config" rev-parse main)"
+out="$(HOME_DIR=home run_updater 2>&1)" && rc=0 || rc=$?
+unset NIXDEV_UPDATE_TARGET_REV NIXDEV_UPDATE_TEST_NEW_LOCK FAKE_TARGET_REV
+new_sha="$(git -C "$TD/home/firstmate/projects/nixos-config" rev-parse HEAD 2>/dev/null || echo '')"
+cur="$(git -C "$TD/home/firstmate/projects/nixos-config" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+ndapi="$(grep -c 'nixdev-config/commits/HEAD' "$TD/logK1" || true)"
+if [[ $rc -eq 0 && "$new_sha" != "$BASE_SHA" && "$cur" == "main" \
+      && "$ndapi" == "0" && -f "$TD/fake-state/created" ]]; then
+  pass "default paths end-to-end: \$HOME canonical + \$HOME sibling resolved the upstream head"
+else
+  fail "default paths end-to-end FAILED (rc=$rc branch=$cur nd-api-calls=$ndapi)"
+  dump_out
+fi
+
+# K2: BOTH explicit overrides beat \$HOME defaults end-to-end (canonical at
+# $TD/fixture-override, sibling at $TD/sib2; the real \$HOME default is
+# present on this machine and must NOT be used).
+mk_fixture "$TD/fixture-override"
+mk_nd_fixture "$TD/sib2" "$TD/sib2-origin.git"
+SIB2_HEAD="$(git -C "$TD/sib2" rev-parse main)"
+gen_lock "$LOCK_DIR/new-sib-k2.json" "$SIB2_HEAD" "$REV_NPKG" "$REV_NPKG" "$REV_UN" \
+  "$REV_UN_INNER_NEW" "$REV_NPKG" "$REV_UN_INNER_NEW" "$REV_NPKG"
+export FAKE_LOG="$TD/logK2" NIXDEV_UPDATE_TARGET_REV="" \
+  NIXDEV_UPDATE_CANONICAL_REPO="$TD/fixture-override" \
+  NIXDEV_UPDATE_NIXDEV_SRC="$TD/sib2" \
+  NIXDEV_UPDATE_TEST_NEW_LOCK="$LOCK_DIR/new-sib-k2.json" FAKE_TARGET_REV="$SIB2_HEAD"
+BASE_SHA="$(git -C "$TD/fixture-override" rev-parse main)"
+out="$(run_updater 2>&1)" && rc=0 || rc=$?
+unset NIXDEV_UPDATE_TARGET_REV NIXDEV_UPDATE_CANONICAL_REPO \
+  NIXDEV_UPDATE_NIXDEV_SRC NIXDEV_UPDATE_TEST_NEW_LOCK FAKE_TARGET_REV
+new_sha="$(git -C "$TD/fixture-override" rev-parse HEAD 2>/dev/null || echo '')"
+cur="$(git -C "$TD/fixture-override" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+ndapi="$(grep -c 'nixdev-config/commits/HEAD' "$TD/logK2" || true)"
+if [[ $rc -eq 0 && "$new_sha" != "$BASE_SHA" && "$cur" == "main" && "$ndapi" == "0" ]]; then
+  pass "explicit override end-to-end: canonical+source overrides win over \$HOME defaults"
+else
+  fail "explicit override end-to-end FAILED (rc=$rc branch=$cur nd-api-calls=$ndapi)"
+  dump_out
+fi
+
+# K3: no sibling checkout anywhere -> gh-axi API lookup (previous behavior
+# preserved); target REV_ND_NEW via the fake nixdev-config commits/HEAD.
+mkdir -p "$TD/home3"
+mk_fixture "$TD/home3/firstmate/projects/nixos-config"
+export FAKE_LOG="$TD/logK3" NIXDEV_UPDATE_TARGET_REV="" \
+  FAKE_ND_HEAD="$REV_ND_NEW"
+BASE_SHA="$(git -C "$TD/home3/firstmate/projects/nixos-config" rev-parse main)"
+out="$(HOME_DIR=home3 run_updater 2>&1)" && rc=0 || rc=$?
+unset NIXDEV_UPDATE_TARGET_REV FAKE_ND_HEAD
+new_sha="$(git -C "$TD/home3/firstmate/projects/nixos-config" rev-parse HEAD 2>/dev/null || echo '')"
+cur="$(git -C "$TD/home3/firstmate/projects/nixos-config" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+ndapi="$(grep -c 'nixdev-config/commits/HEAD' "$TD/logK3" || true)"
+if [[ $rc -eq 0 && "$new_sha" != "$BASE_SHA" && "$cur" == "main" && "$ndapi" -ge 1 ]]; then
+  pass "absent default sibling falls back to the gh-axi API (previous behavior preserved)"
+else
+  fail "API fallback FAILED (rc=$rc branch=$cur nd-api-calls=$ndapi)"
+  dump_out
+fi
+
+# K4: missing EXPLICIT sibling override refuses before any mutation
+mk_fixture
+export FAKE_LOG="$TD/logK4" NIXDEV_UPDATE_TARGET_REV="" \
+  NIXDEV_UPDATE_NIXDEV_SRC="$TD/no-such-sibling"
+out="$(run_updater 2>&1)" && rc=0 || rc=$?
+unset NIXDEV_UPDATE_TARGET_REV NIXDEV_UPDATE_NIXDEV_SRC
+cur="$(git -C "$TD/fixture" rev-parse --abbrev-ref HEAD)"
+created="$(test -f "$TD/fake-state/created" && echo yes || echo no)"
+ndapi="$(grep -c 'nixdev-config/commits/HEAD' "$TD/logK4" || true)"
+if [[ $rc -ne 0 && "$cur" == "main" && "$created" == "no" && "$ndapi" == "0" ]]; then
+  pass "missing explicit NIXDEV_UPDATE_NIXDEV_SRC refused before any mutation"
+else
+  fail "missing explicit NIXDEV_UPDATE_NIXDEV_SRC NOT refused (rc=$rc branch=$cur pr-created=$created)"
   dump_out
 fi
 

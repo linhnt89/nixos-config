@@ -160,16 +160,24 @@ scripts/update-nixdev-config.sh --yes      # unattended run (automation; stdin i
 What the run does, in order:
 
 1. **Preconditions (guarded; it refuses instead of stash/reset/clean/force-push):**
-   - the canonical checkout (the `main` worktree of this git repo —
-     discovered portably, or override with `NIXDEV_UPDATE_CANONICAL_REPO`)
-     must be on `main` and completely clean;
+   - the canonical checkout (default: `$HOME/firstmate/projects/nixos-config`;
+     override with `NIXDEV_UPDATE_CANONICAL_REPO`; portable git-worktree
+     discovery is the last-resort fallback) must be on `main` and
+     completely clean;
    - `git fetch origin main` must succeed and local `main` must equal
      `origin/main` (a conflict-free, fast-forwardable starting point);
    - `gh-axi` must be installed, authenticated, and able to read the
      private `linhnt89/nixos-config` repository (proves the GitHub path);
    - if the lock already sits at the upstream head it exits 0 with
      "already up to date" — no branch, no PR.
-2. Re-pins only the input: `nix flake lock --update-input nixdev-config`
+2. Resolves the upstream default-branch head from the sibling
+   `nixdev-config` source checkout (default:
+   `$HOME/firstmate/projects/nixdev-config`; override with
+   `NIXDEV_UPDATE_NIXDEV_SRC`) via a read-only `git ls-remote origin
+   HEAD` (the sibling is never modified). If only the *default* sibling
+   is absent or stale, the gh-axi API lookup is used instead; a missing
+   or unusable *explicit* `NIXDEV_UPDATE_NIXDEV_SRC` refuses the run.
+   Re-pins only the input: `nix flake lock --update-input nixdev-config`
    on a dedicated branch (`deps/nixdev-config-bump-<rev8>`).
 3. **Proves the scope** with a structured `flake.lock` comparison
    (jq node graph): only nodes reachable exclusively from the
@@ -199,6 +207,20 @@ script header. In particular `NIXDEV_UPDATE_CHECK_FLAGS` forwards extra
 arguments to `check.sh` (e.g. `--skip-build` in constrained
 environments) and `NIXDEV_UPDATE_TARGET_REV` pins an explicit rev
 instead of the upstream head.
+
+Paths and precedence (portable on every machine; no hardcoded home paths):
+
+| role | default | override |
+| --- | --- | --- |
+| canonical `nixos-config` checkout | `$HOME/firstmate/projects/nixos-config` | `NIXDEV_UPDATE_CANONICAL_REPO` |
+| sibling `nixdev-config` source checkout | `$HOME/firstmate/projects/nixdev-config` | `NIXDEV_UPDATE_NIXDEV_SRC` |
+
+An explicit override always beats a `$HOME` default. The canonical
+`$HOME` default is checked before the last-resort portable git-worktree
+discovery. The upstream head is resolved from the sibling source
+checkout first; a missing/stale *default* sibling falls back to the
+gh-axi API, while a missing or unusable *explicit*
+`NIXDEV_UPDATE_NIXDEV_SRC` refuses the run before any mutation.
 
 Regression tests for the guards run as part of `scripts/check.sh`:
 `scripts/test-update-nixdev-config.sh` is fully offline (fake gh-axi/

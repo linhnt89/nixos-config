@@ -53,10 +53,22 @@
 #     ("already up to date" -> exit 0, no branch, no PR).
 #
 # Env overrides (offline/testing only, except CANONICAL_REPO):
-#   NIXDEV_UPDATE_CANONICAL_REPO   canonical checkout path (default: the
-#                                  main worktree of the git repo this
-#                                  script is invoked from, discovered
-#                                  portably - no hardcoded home paths)
+#   NIXDEV_UPDATE_CANONICAL_REPO   canonical NixOS checkout path. Precedence:
+#                                  1) this explicit override; 2) the default
+#                                  $HOME/firstmate/projects/nixos-config
+#                                  (portable via $HOME - never a hardcoded
+#                                  home path); 3) the main worktree of the
+#                                  git repo this script is invoked from
+#                                  (last-resort discovery).
+#   NIXDEV_UPDATE_NIXDEV_SRC       sibling nixdev-config source checkout
+#                                  (default: $HOME/firstmate/projects/
+#                                  nixdev-config). The upstream default-
+#                                  branch head is resolved from it first
+#                                  (git ls-remote origin HEAD; the sibling
+#                                  is never modified). A missing DEFAULT
+#                                  sibling falls back to the gh-axi API
+#                                  lookup; a missing or unusable EXPLICIT
+#                                  override refuses the run.
 #   NIXDEV_UPDATE_BASE_REF         base branch (default: main)
 #   NIXDEV_UPDATE_GH_AXI_BIN       gh-axi binary (default: gh-axi)
 #   NIXDEV_UPDATE_NIX_BIN          nix binary (default: nix)
@@ -185,18 +197,89 @@ gh_api_scalar() {
 # canonical checkout discovery and preflight guards
 # ---------------------------------------------------------------------------
 
-# resolve_canonical -> absolute path of the canonical main checkout: the
-# main worktree of the git repo this script is invoked from, or the
-# explicit NIXDEV_UPDATE_CANONICAL_REPO override. No hardcoded home paths.
+# resolve_canonical -> absolute path of the canonical NixOS checkout.
+# Precedence: 1) explicit NIXDEV_UPDATE_CANONICAL_REPO; 2) the default
+# $HOME/firstmate/projects/nixos-config (portable via $HOME - never a
+# hardcoded home path); 3) the main worktree of the git repo this script
+# is invoked from (last-resort discovery).
 resolve_canonical() {
   if [[ -n "${NIXDEV_UPDATE_CANONICAL_REPO:-}" ]]; then
     printf '%s' "$(cd -- "$NIXDEV_UPDATE_CANONICAL_REPO" && pwd -P)"
+    return 0
+  fi
+  local candidate=""
+  [[ -n "${HOME:-}" ]] && candidate="${HOME}/firstmate/projects/nixos-config"
+  if [[ -n "$candidate" && -d "$candidate" ]]; then
+    printf '%s' "$(cd -- "$candidate" && pwd -P)"
     return 0
   fi
   local common
   common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
   [[ -n "$common" && -d "$common" ]] || return 1
   printf '%s' "$(cd -- "$(dirname -- "$common")" && pwd -P)"
+}
+
+# resolve_nixdev_src -> absolute path of the sibling nixdev-config source
+# checkout. Precedence: 1) explicit NIXDEV_UPDATE_NIXDEV_SRC (must exist;
+# returns 1 when it does not); 2) the default
+# $HOME/firstmate/projects/nixdev-config when present (returns 1
+# otherwise). Prints the resolved path on success; no diagnostics
+# (callers decide). Never hardcodes a home path.
+resolve_nixdev_src() {
+  local p="${NIXDEV_UPDATE_NIXDEV_SRC:-}"
+  if [[ -n "$p" ]]; then
+    [[ -d "$p" ]] || return 1
+    printf '%s' "$(cd -- "$p" && pwd -P)"
+    return 0
+  fi
+  p="${HOME:-}/firstmate/projects/nixdev-config"
+  [[ -d "$p" ]] || return 1
+  printf '%s' "$(cd -- "$p" && pwd -P)"
+}
+
+# resolve_src_head SRC_CHECKOUT -> the upstream default-branch head SHA as
+# seen by the sibling checkout's origin, via `git ls-remote --symref`
+# (read-only; the sibling checkout is never modified and no remote-
+# tracking refs are created).
+resolve_src_head() {
+  local src="$1" out="" sha=""
+  git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "error: not a git work tree: $src" >&2; return 1; }
+  out="$(git -C "$src" ls-remote --symref origin HEAD 2>/dev/null)" \
+    || { echo "error: git ls-remote origin HEAD failed in $src" >&2; return 1; }
+  sha="$(awk '$2 == "HEAD" { print $1 }' <<<"$out" | tail -n 1)"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] \
+    || { echo "error: no upstream HEAD sha resolvable from $src" >&2; return 1; }
+  printf '%s' "$sha"
+}
+
+# resolve_upstream_head -> the nixdev-config upstream default-branch head:
+# from the sibling nixdev-config source checkout (default
+# $HOME/firstmate/projects/nixdev-config, or NIXDEV_UPDATE_NIXDEV_SRC)
+# when usable; otherwise via the gh-axi API (previous behavior). A
+# missing/unusable EXPLICIT override refuses (return 2); a missing or
+# stale DEFAULT sibling just falls back to the API. Sets NIXDEV_SRC_USED
+# to the sibling path when the sibling was the source (for the plan).
+resolve_upstream_head() {
+  local src="" rev=""
+  NIXDEV_SRC_USED=""
+  if src="$(resolve_nixdev_src)"; then
+    if rev="$(resolve_src_head "$src")"; then
+      NIXDEV_SRC_USED="$src"
+      printf '%s' "$rev"
+      return 0
+    fi
+    if [[ -n "${NIXDEV_UPDATE_NIXDEV_SRC:-}" ]]; then
+      echo "error: explicit NIXDEV_UPDATE_NIXDEV_SRC could not resolve the upstream head: $src (git ls-remote origin HEAD failed). Refusing the gh-axi fallback; fix the checkout or unset the override." >&2
+      return 2
+    fi
+    echo "warning: default sibling nixdev-config checkout could not resolve the upstream head; falling back to the gh-axi API: $src" >&2
+  elif [[ -n "${NIXDEV_UPDATE_NIXDEV_SRC:-}" ]]; then
+    echo "error: explicit NIXDEV_UPDATE_NIXDEV_SRC is not a usable git checkout: $NIXDEV_UPDATE_NIXDEV_SRC" >&2
+    return 2
+  fi
+  echo "==> resolving the upstream head via gh-axi" >&2
+  gh_api_scalar "/repos/linhnt89/nixdev-config/commits/HEAD" '.sha'
 }
 
 # guard_canonical_clean CANONICAL BASE_REF -> 0 when the canonical checkout
@@ -456,6 +539,19 @@ guard_dispatch() {
       [[ -n "$canon" ]] || { echo "clean guard: NIXDEV_UPDATE_CANONICAL_REPO required" >&2; exit 1; }
       guard_canonical_clean "$canon" "${NIXDEV_UPDATE_BASE_REF:-main}"
       ;;
+    paths)
+      # Print the resolved canonical + sibling paths (for the offline
+      # path-resolution tests). rc semantics:
+      #   canonical_rc: 0 resolved, 1 not resolvable
+      #   sibling_rc:   0 resolved, 1 absent/unusable
+      local c="" s="" c_rc=0 s_rc=0
+      c="$(resolve_canonical)" || c_rc=$?
+      s="$(resolve_nixdev_src)" || s_rc=$?
+      echo "canonical=${c:-}"
+      echo "canonical_rc=$c_rc"
+      echo "sibling=${s:-}"
+      echo "sibling_rc=$s_rc"
+      ;;
     lock-scope)
       [[ $# -eq 4 ]] || { echo "lock-scope guard: OLD NEW TARGET required" >&2; exit 1; }
       lock_scope_check "$2" "$3" "$4"
@@ -507,7 +603,7 @@ BODY_FILE="$(mktemp)"
 trap 'rm -f "$BODY_FILE" "$LOCK_BEFORE" "$LOCK_AFTER"' EXIT
 
 CANON="$(resolve_canonical)" \
-  || DIE "cannot resolve the canonical checkout (run inside a nixos-config worktree, or set NIXDEV_UPDATE_CANONICAL_REPO)"
+  || DIE "cannot resolve the canonical checkout (expected \$HOME/firstmate/projects/nixos-config, a nixos-config worktree, or NIXDEV_UPDATE_CANONICAL_REPO)"
 BASE_REF="${NIXDEV_UPDATE_BASE_REF:-main}"
 OWNER=""
 REPO=""
@@ -534,8 +630,8 @@ if [[ -n "${NIXDEV_UPDATE_TARGET_REV:-}" ]]; then
   TARGET_REV="$NIXDEV_UPDATE_TARGET_REV"
   echo "==> target rev from NIXDEV_UPDATE_TARGET_REV: $TARGET_REV"
 else
-  TARGET_REV="$(gh_api_scalar "/repos/linhnt89/nixdev-config/commits/HEAD" '.sha')" \
-    || DIE "could not resolve the upstream nixdev-config head"
+  TARGET_REV="$(resolve_upstream_head)" \
+    || DIE "could not resolve the upstream nixdev-config head (sibling checkout unusable and the gh-axi lookup failed); see docs/updates-runbook.md"
 fi
 [[ "$TARGET_REV" =~ ^[0-9a-f]{40}$ ]] || DIE "unusable upstream target rev: '$TARGET_REV'"
 
@@ -557,6 +653,7 @@ echo "==> plan"
 echo "  branch:   $BRANCH"
 echo "  commit:   $TITLE"
 echo "  change:   flake.lock nixdev-config $CURRENT_REV -> $TARGET_REV (lock-only)"
+echo "  paths:    canonical=$CANON | nixdev-config source=${NIXDEV_SRC_USED:-gh-axi API}"
 echo "  validate: scripts/check.sh (static checks + nix flake check + non-activating toplevel build + Home Manager eval)"
 echo "  github:   push $BRANCH -> PR -> squash-merge (gh-axi); then fast-forward $CANON $BASE_REF"
 echo "  never:    no activation, no switch, no stash/reset/clean/force-push"

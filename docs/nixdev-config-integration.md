@@ -92,7 +92,11 @@ lock-only PR, and the canonical fast-forward: `scripts/update-nixdev-config.sh`
 (preflight plan with `--dry-run`, unattended with `--yes`). It never
 activates the machine and is covered by offline regression tests wired
 into `scripts/check.sh`. See `docs/updates-runbook.md`
-("Automated nixdev-config bump").
+("Automated nixdev-config bump"). It resolves its two paths portably:
+the canonical checkout defaults to `$HOME/firstmate/projects/nixos-config`
+and the upstream source to `$HOME/firstmate/projects/nixdev-config`, each
+overridable via `NIXDEV_UPDATE_CANONICAL_REPO` / `NIXDEV_UPDATE_NIXDEV_SRC`
+(no hardcoded home paths).
 
 Since the input is public, Dependabot can also propose nixdev-config
 updates like any other `github:` input (it is no longer listed in the

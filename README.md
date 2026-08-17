@@ -717,7 +717,11 @@ updates like any other `github:` input; it can also move manually with
 narrow lane `scripts/update-nixdev-config.sh` (validates locally, opens
 and squash-merges a lock-only PR via gh-axi, fast-forwards the
 canonical checkout, and never activates the machine — see
-`docs/updates-runbook.md`). Fetching it needs no GitHub access-token
+`docs/updates-runbook.md`). Path defaults are portable and never
+hardcoded: canonical checkout `$HOME/firstmate/projects/nixos-config`,
+upstream source `$HOME/firstmate/projects/nixdev-config`, each
+overridable via `NIXDEV_UPDATE_CANONICAL_REPO` / `NIXDEV_UPDATE_NIXDEV_SRC`.
+Fetching it needs no GitHub access-token
 (see `docs/nixdev-config-integration.md`).
 
 Inspect the current inputs with:
