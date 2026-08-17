@@ -109,6 +109,13 @@ if ! scripts/test-mango-default-session.sh; then
 fi
 echo "    ok scripts/test-mango-default-session.sh"
 
+echo '  nixdev-config update automation regression tests:'
+if ! scripts/test-update-nixdev-config.sh; then
+  echo "    fail: scripts/test-update-nixdev-config.sh" >&2
+  exit 1
+fi
+echo "    ok scripts/test-update-nixdev-config.sh"
+
 yaml_parser=""
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
   yaml_parser="python3"

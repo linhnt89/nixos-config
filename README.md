@@ -708,12 +708,17 @@ Helpers:
 scripts/check.sh                # static checks + flake check + build + HM eval
 scripts/check-stale.sh          # read-only staleness report
 scripts/update-no-mistakes.sh   # bump the noMistakes tarball pin (Dependabot cannot)
+scripts/update-nixdev-config.sh # automated narrow bump of the nixdev-config input (never activates)
 ```
 
 The `nixdev-config` input is public, so Dependabot can propose its
 updates like any other `github:` input; it can also move manually with
-`nix flake lock --update-input nixdev-config`. Fetching it needs no
-GitHub access-token (see `docs/nixdev-config-integration.md`).
+`nix flake lock --update-input nixdev-config` or through the automated
+narrow lane `scripts/update-nixdev-config.sh` (validates locally, opens
+and squash-merges a lock-only PR via gh-axi, fast-forwards the
+canonical checkout, and never activates the machine — see
+`docs/updates-runbook.md`). Fetching it needs no GitHub access-token
+(see `docs/nixdev-config-integration.md`).
 
 Inspect the current inputs with:
 

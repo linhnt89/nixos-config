@@ -29,7 +29,7 @@ procedure; the README section "Updating dependencies" is the short form.
 | Pi lane (unstable) | `nixpkgs-unstable` input | Dependabot individual PR or `nix flake update nixpkgs-unstable` |
 | Home Manager | `home-manager` (`release-26.05`, follows nixpkgs) | moves with `nixpkgs`; Dependabot |
 | Treehouse | `treehouse` (follows nixpkgs) | Dependabot |
-| nixdev-config | `nixdev-config` (public repo, `github:linhnt89/nixdev-config`; desktop's portable Home Manager layer) | Dependabot PR or `nix flake lock --update-input nixdev-config`; see `docs/nixdev-config-integration.md` |
+| nixdev-config | `nixdev-config` (public repo, `github:linhnt89/nixdev-config`; desktop's portable Home Manager layer) | Dependabot PR, `nix flake lock --update-input nixdev-config`, or `scripts/update-nixdev-config.sh` (automated narrow lane); see `docs/nixdev-config-integration.md` |
 | Herdr | `herdr` tag (`v0.8.0`) | deliberate `flake.nix` ref edit (Dependabot can propose it) |
 | no-mistakes | tarball URL in `flake.nix` | `scripts/update-no-mistakes.sh` only (Dependabot cannot bump tarball inputs) |
 | Node CLIs | `home/firstmate/node-tools/package.json` + `package-lock.json` (exact pins) | Dependabot npm PR or `npm install --package-lock-only` |
@@ -133,6 +133,78 @@ After any lock change, commit `flake.lock` together with the change —
 never a bare lock refresh. Feature branches validate with
 `scripts/check.sh` (its build step uses `sudo nixos-rebuild build
 --flake .#metacube`) per `AGENTS.md`.
+
+## Automated nixdev-config bump (trusted-dependency lane)
+
+`scripts/update-nixdev-config.sh` is the narrow operator-invoked
+automation for ONE input: `nixdev-config`. After (or to detect) a
+merged change in `linhnt89/nixdev-config`, it re-pins that input to the
+upstream default-branch head, validates the resulting configuration
+locally, opens a lock-only PR through `gh-axi`, squash-merges it only
+after every guard passes, and fast-forwards the canonical local `main`.
+It **never switches, tests, boots, or otherwise activates the machine**
+— activation stays a separate explicit command (below).
+
+This is an alternative to the normal per-input Dependabot PR for this
+one public input; it is deliberately NOT used for any other lane. Every
+ordinary NixOS change keeps the existing workflow: branch, edit, run
+`scripts/check.sh`, open a normal PR, switch only after approval.
+
+```bash
+scripts/update-nixdev-config.sh            # inspect-only plan + optional confirm
+scripts/update-nixdev-config.sh --help     # usage
+scripts/update-nixdev-config.sh --dry-run  # full preflight + exact plan; changes nothing
+scripts/update-nixdev-config.sh --yes      # unattended run (automation; stdin is not a TTY)
+```
+
+What the run does, in order:
+
+1. **Preconditions (guarded; it refuses instead of stash/reset/clean/force-push):**
+   - the canonical checkout (the `main` worktree of this git repo —
+     discovered portably, or override with `NIXDEV_UPDATE_CANONICAL_REPO`)
+     must be on `main` and completely clean;
+   - `git fetch origin main` must succeed and local `main` must equal
+     `origin/main` (a conflict-free, fast-forwardable starting point);
+   - `gh-axi` must be installed, authenticated, and able to read the
+     private `linhnt89/nixos-config` repository (proves the GitHub path);
+   - if the lock already sits at the upstream head it exits 0 with
+     "already up to date" — no branch, no PR.
+2. Re-pins only the input: `nix flake lock --update-input nixdev-config`
+   on a dedicated branch (`deps/nixdev-config-bump-<rev8>`).
+3. **Proves the scope** with a structured `flake.lock` comparison
+   (jq node graph): only nodes reachable exclusively from the
+   nixdev-config subtree may change; the root input map, lock version,
+   and every other input's lock entry (including shared nodes) must be
+   byte-identical, and the new rev must equal the upstream head. It
+   refuses on anything broader or on a no-op.
+4. Commits ONLY `flake.lock` and runs the repository's authoritative
+   local gate `scripts/check.sh` (static checks + `nix flake check` +
+   non-activating toplevel build + Home Manager user-config evaluation).
+5. Pushes the branch (never force), opens the PR via `gh-axi`
+   (`chore(deps): bump nixdev-config input to <rev8>`), verifies PR
+   identity/head against the validated commit, and squash-merges
+   (`--squash --delete-branch`) only after identity + mergeability pass.
+6. After a **confirmed** merge (API-verified, tree equal to the validated
+   commit), fast-forwards the canonical local `main` and deletes the
+   temporary branch, leaving the checkout clean.
+
+Refusals and failures always leave work inspectable: the branch stays
+checked out in the canonical checkout, any pushed branch/PR stays on
+GitHub, and the script prints exactly what happened and what to inspect.
+GitHub outages are retried a few times; a sustained outage stops the run
+with a clear error — it never claims success it cannot verify.
+
+Env overrides (offline/testing only, except the canonical repo): see the
+script header. In particular `NIXDEV_UPDATE_CHECK_FLAGS` forwards extra
+arguments to `check.sh` (e.g. `--skip-build` in constrained
+environments) and `NIXDEV_UPDATE_TARGET_REV` pins an explicit rev
+instead of the upstream head.
+
+Regression tests for the guards run as part of `scripts/check.sh`:
+`scripts/test-update-nixdev-config.sh` is fully offline (fake gh-axi/
+nix/check.sh, local bare origin) and covers dirty-tree refusal, lock-
+scope refusal, validation failure, PR identity mismatch, merge failure,
+GitHub outage handling, and the no-activation guarantee.
 
 ## From merged update to a running system
 
