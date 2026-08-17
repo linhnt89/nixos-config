@@ -1,23 +1,25 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
+{ config
+, lib
+, pkgs
+, ...
 }:
 
 #
-# User-scope half of the MangoWM + Noctalia desktop experiment (Phase 0).
+# User-scope half of the MangoWM + Noctalia desktop experiment (default
+# login session while the experiment flag is on).
 #
 # Generates the Mango and Noctalia configurations declaratively from the
 # project design tokens in home/theme.nix. This module is imported by the
 # NixOS experiment module (modules/nixos/mango-experiment.nix) and is gated
 # by the same single flag; it is inert when the flag is off.
 #
-# The stable Hyprland session never reads these files; they only exist in the
-# home directory for the manual opt-in Mango session
-# (`exec uwsm start -e -D mango mango.desktop` on an unused VT). The one
-# exception is the blueman autostart shadow below, which the systemd user
-# manager reads in both sessions (it is behaviorally neutral in Hyprland).
+# These files are read by the greetd default Mango session, which starts
+# Mango through UWSM (`uwsm start -e -D mango mango.desktop` via
+# greetd); the Hyprland session never reads them, but Hyprland remains
+# installed as the explicit fallback session selectable from the login
+# screen. The one exception is the blueman autostart shadow below, which the
+# systemd user manager reads in both sessions (it is behaviorally neutral
+# in Hyprland).
 #
 # Versions this configuration is generated for (pinned nixpkgs-unstable):
 #   - mango 0.15.6     (config keys verified against assets/config.conf)
@@ -58,7 +60,7 @@ let
   # xdg-desktop-autostart.target, pulled in by uwsm's
   # wayland-session-xdg-autostart@.target).
   #
-  # This file shadows the system entry with the same file name (the XDG
+  # The file shadows the system entry with the same file name (the XDG
   # autostart search order puts ~/.config/autostart before /etc/xdg/autostart
   # and the generator keeps the first occurrence of a name), adding
   # `NotShowIn=mango`. systemd >= 260 converts OnlyShowIn/NotShowIn into an
@@ -307,7 +309,7 @@ let
 
   noctaliaPalette = {
     dark = {
-      mPrimary = hex c.accent;            # accent for buttons/links/active
+      mPrimary = hex c.accent; # accent for buttons/links/active
       mOnPrimary = hex c.background;
       mSecondary = hex c.accentDim;
       mOnSecondary = hex c.background;
@@ -315,9 +317,9 @@ let
       mOnTertiary = hex c.background;
       mError = hex c.danger;
       mOnError = hex c.background;
-      mSurface = hex c.background;        # main shell background
+      mSurface = hex c.background; # main shell background
       mOnSurface = hex c.text;
-      mSurfaceVariant = hex c.surface;    # cards / panels
+      mSurfaceVariant = hex c.surface; # cards / panels
       mOnSurfaceVariant = hex c.textMuted;
       mOutline = hex c.border;
       mShadow = hex c.background;

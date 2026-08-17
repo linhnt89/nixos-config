@@ -98,6 +98,13 @@ if ! scripts/test-mango-blueman.sh; then
 fi
 echo "    ok scripts/test-mango-blueman.sh"
 
+echo '  mango default-session regression tests:'
+if ! scripts/test-mango-default-session.sh; then
+  echo "    fail: scripts/test-mango-default-session.sh" >&2
+  exit 1
+fi
+echo "    ok scripts/test-mango-default-session.sh"
+
 yaml_parser=""
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
   yaml_parser="python3"

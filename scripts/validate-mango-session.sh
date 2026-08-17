@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# validate-mango-session.sh — Phase 1 validation checklist for the
+# validate-mango-session.sh — validation checklist for the
 # MangoWM + Noctalia experiment (docs/mango-noctalia-experiment.md).
 #
 # Two modes:
@@ -26,8 +26,9 @@
 #                     client windows are polled for up to 30 s (first check
 #                     at 3 s, then every second) per mango-probe-lib.sh
 #   --preflight       verify that no same-user Hyprland session or fallback
-#                     service is still active before starting Mango; must run
-#                     from a fresh VT (rejects graphical sessions with exit 2)
+#                     service is still active before entering Mango (e.g.
+#                     the manual VT debug entry); must run from a fresh VT
+#                     (rejects graphical sessions with exit 2)
 #   --footprint       print RSS of the experiment and fallback process sets
 #   --footprint-only  print only the process footprint (for a stable baseline)
 #
