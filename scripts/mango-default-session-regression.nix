@@ -42,11 +42,19 @@ let
         home-manager.useUserPackages = true;
         home-manager.extraSpecialArgs = {
           inherit pkgsUnstable;
-          treehouse = f.inputs.treehouse;
-          herdr = f.inputs.herdr;
-          noMistakes = f.inputs.noMistakes;
+          # Same wiring as flake.nix: the shared Firstmate toolchain
+          # comes from nixdev-config (no treehouse/herdr/noMistakes
+          # inputs on the consumer side anymore).
+          treehousePkg =
+            f.inputs.nixdev-config.packages.${system}.treehouse;
         };
-        home-manager.users.linhnt = import ../home/linhnt.nix;
+        home-manager.users.linhnt = {
+          imports = [
+            f.inputs.nixdev-config.homeManagerModules.desktop
+            f.inputs.nixdev-config.homeManagerModules.firstmateTools
+            ../home/linhnt.nix
+          ];
+        };
       }
       { metacube.experiments.mangoNoctalia.enable = nixpkgs.lib.mkForce false; }
     ];

@@ -43,10 +43,10 @@ Declarative NixOS and Home Manager configuration for my MetaCube mini PC.
 │       ├── appearance.nix
 │       ├── apps.nix
 │       ├── experiment.nix
-│       ├── git.nix        (local adapters: MetaCube-personal settings
-│       ├── herdr.nix       only — the portable layer comes from the
-│       ├── moshi.nix       nixdev-config desktop role, see below)
-│       ├── services.nix
+│       ├── firstmate-timer.nix (local adapters: MetaCube-personal settings
+│       ├── git.nix            only — the portable layer comes from the
+│       ├── moshi.nix          nixdev-config desktop role + firstmateTools,
+│       ├── services.nix       see below)
 │       ├── shell.nix
 │       └── waybar.nix
 │
@@ -84,12 +84,18 @@ The rebuild target is therefore:
 
 The flake should stay relatively small.
 
-It also imports the **desktop role** of the public `nixdev-config` flake
-(`nixdev-config.homeManagerModules.desktop`) into the Home Manager user
-configuration: the portable shell/development layer and `gh` (never
-`glab`). The input is a public GitHub repository, so fetching it needs no
-access-token; credentials never belong in this repository. See
-`docs/nixdev-config-integration.md` for ownership, updates, and rollback.
+It also imports the **desktop role** and the opt-in **firstmateTools
+module** of the public `nixdev-config` flake
+(`nixdev-config.homeManagerModules.desktop` / `.firstmateTools`) into
+the Home Manager user configuration: the portable shell/development
+layer and `gh` (never `glab`), plus the shared Firstmate toolchain
+(axi CLIs, no-mistakes, treehouse, pinned herdr opt-in). Shared
+toolchain pins are nixdev-config-owned — this flake declares no
+treehouse/herdr/noMistakes inputs and passes only the exported
+`packages.${system}.treehouse`. The input is a public GitHub
+repository, so fetching it needs no access-token; credentials never
+belong in this repository. See `docs/nixdev-config-integration.md` for
+ownership, updates, and rollback.
 
 ### NixOS modules
 
@@ -177,8 +183,9 @@ home/modules/
 
 The portable layer (shell/starship/fzf/bat/eza/direnv/delta/git structure,
 common packages incl. Python/Node, `gh`) is owned by the nixdev-config
-desktop role (imported in `flake.nix`). The local modules are **adapters**
-carrying only MetaCube-personal settings:
+desktop role, and the shared Firstmate toolchain by its opt-in
+firstmateTools module (both imported in `flake.nix`). The local modules
+are **adapters** carrying only MetaCube-personal settings:
 
 Current modules:
 
@@ -199,7 +206,11 @@ dev.nix
     gh client behavior (SSH protocol, no HTTPS credential helper)
     lazygit UI
     Pi lane (pkgsUnstable)
-    imports Firstmate/treehouse/herdr modules
+    user-level treehouse pool default (~/.config/treehouse/config.toml)
+
+firstmate-timer.nix
+    opt-in hourly FM Dependabot sweep user timer (MetaCube-only;
+    runs bin/fm-dependabot-sweep.sh from %h/firstmate, path-gated)
 
 appearance.nix
     GTK
@@ -234,17 +245,17 @@ moshi.nix
     Moshi mobile-terminal host support
     mosh
     tmux
-
-herdr.nix
-    Herdr agent session runtime
 ```
 
-`home/linhnt.nix` is the Home Manager entry point and imports the regular user
-modules. The gated `experiment.nix` module is imported by the NixOS experiment
-module only when its flag is enabled (it generates the Mango/Noctalia configs
-read by the default Mango login session). The portable layer itself is
-imported from the `nixdev-config` desktop role in `flake.nix`
-(see `docs/nixdev-config-integration.md`).
+`home/linhnt.nix` is the Home Manager entry point and imports the regular
+user modules. It also opts into the pinned herdr binary for this PC's
+Herdr backend (`nixdev.firstmate.enableHerdr`) and the FM Dependabot
+sweep timer (`metacube.firstmate.fmDependabotSweep.enable`). The gated
+`experiment.nix` module is imported by the NixOS experiment
+module only when its flag is enabled (it generates the Mango/Noctalia
+configs read by the default Mango login session). The portable layer
+itself is imported from the `nixdev-config` desktop role + firstmateTools
+in `flake.nix` (see `docs/nixdev-config-integration.md`).
 
 The native Hyprland Lua configuration is:
 
@@ -706,10 +717,13 @@ Helpers:
 
 ```bash
 scripts/check.sh                # static checks + flake check + build + HM eval
-scripts/check-stale.sh          # read-only staleness report
-scripts/update-no-mistakes.sh   # bump the noMistakes tarball pin (Dependabot cannot)
+scripts/check-stale.sh          # read-only staleness report (flake inputs)
 scripts/update-nixdev-config.sh # automated narrow bump of the nixdev-config input (never activates)
 ```
+
+(The old `scripts/update-no-mistakes.sh` is gone: no-mistakes and the
+other shared Firstmate toolchain pins are nixdev-config-owned since the
+firstmateTools refactor.)
 
 The `nixdev-config` input is public, so Dependabot can propose its
 updates like any other `github:` input; it can also move manually with

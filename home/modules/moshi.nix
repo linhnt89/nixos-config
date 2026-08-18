@@ -11,7 +11,9 @@
   #   session when the phone uses the mosh transport.
   # - tmux: durable workspaces across terminal reconnects.
   #   Herdr is the preferred multiplexer on this machine
-  #   and is installed by ./herdr.nix; tmux remains a
+  #   and is installed by nixdev-config's firstmateTools
+  #   module (pinned herdr, enabled via `nixdev.firstmate.enableHerdr`);
+  #   tmux remains a
   #   fallback.
   #
   # These land in the Home Manager user profile
