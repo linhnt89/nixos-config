@@ -688,12 +688,26 @@ Do not change them merely because NixOS or Home Manager is upgraded to a newer r
 
 Dependency upgrades are deliberate, reviewed changes: Dependabot opens
 one targeted PR per input (Nix and npm weekly, GitHub Actions monthly),
-and nothing is activated automatically.
+and nothing is activated automatically. Eligible Dependabot
+version-update PRs (author `dependabot[bot]`, base = default branch,
+in this repository) are squash-auto-merged by GitHub via
+`.github/workflows/dependabot-auto-merge.yml` — a `pull_request_target`
+workflow that never checks out PR code and only requests
+`gh pr merge --auto --squash`; it never merges directly and never
+approves reviews.
 
-**Local validation is authoritative.** Every change — including
-Dependabot/update PRs — must pass the repository-owned local check
-before merge. It runs static checks, `nix flake check`, a non-activating
-build of the system toplevel, and a full evaluation of the Home Manager
+**One-time prerequisite:** enable "Allow auto-merge" in repository
+settings (Settings → General → Pull Requests). GitHub's repository
+auto-merge setting and any branch-protection rules remain
+authoritative: with no required checks, an eligible bot PR may merge
+promptly without a local run; if required checks are configured later,
+GitHub enforces them before auto-merging.
+
+**Local validation is authoritative.** Every human-authored change —
+including non-eligible update PRs — must pass the repository-owned
+local check before merge. It runs static checks, `nix flake check`, a
+non-activating build of the system toplevel, and a full evaluation of
+the Home Manager
 user configuration (which instantiates the imported nixdev-config
 desktop modules); it never switches or activates anything:
 

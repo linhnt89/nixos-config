@@ -7,10 +7,14 @@ procedure; the README section "Updating dependencies" is the short form.
 ## Principles
 
 - **Updates are deliberate, reviewed, and locally build-verified.**
-  Dependabot opens targeted per-dependency PRs; every PR must pass the
-  repository's local gate `scripts/check.sh`; nothing is activated
-  automatically, ever. CI is an optional fallback, not a required
-  check.
+  Dependabot opens targeted per-dependency PRs; human-authored changes
+  (and any non-eligible PR) must pass the repository's local gate
+  `scripts/check.sh` before merge; nothing is activated automatically,
+  ever. Eligible Dependabot version-update PRs are squash-auto-merged by
+  GitHub itself (see "Dependabot" below) once the repository's own
+  merge requirements are met — with no required checks they may merge
+  promptly, so the post-merge machine verification in "From merged
+  update to a running system" is the real safety net for those.
 - **Never self-update Nix-managed tools.** `no-mistakes update`,
   `herdr update`, `treehouse update`, `pi update` and `npm install -g`
   are the wrong path on this host: every tool is immutable in the Nix
@@ -47,7 +51,9 @@ Notes:
 - `nixpkgs-unstable` is excluded from the `stable-lane` Dependabot group
   on purpose: the Pi lane should only move when a Pi update is actually
   wanted, not silently with every stable bump. Its individual Dependabot
-  PRs still require the normal review.
+  PRs are subject to the same auto-merge as every other eligible bot PR;
+  deliberate movement is enforced by the Dependabot schedule, not by
+  review.
 - `templates/dev/flake.nix` pins `nixos-26.05` for project dev shells;
   it is a separate surface, only touched at branch migrations.
 
@@ -55,7 +61,37 @@ Notes:
 
 Config: `.github/dependabot.yml`. Weekly on Monday (Asia/Ho_Chi_Minh):
 nix and npm; monthly: GitHub Actions. Each PR is one targeted update.
-Review checklist for every Dependabot PR:
+
+### Auto-merge (GitHub-native)
+
+`.github/workflows/dependabot-auto-merge.yml` asks GitHub to
+squash-auto-merge every eligible Dependabot version-update PR:
+
+- author is exactly `dependabot[bot]`, base is the repository default
+  branch, repository is exactly `linhnt89/nixos-config` (drafts are
+  skipped until they become ready);
+- the workflow uses the trusted base-branch form
+  (`pull_request_target`) but never checks out, executes, or evaluates
+  pull-request code — it only runs the GitHub CLI preinstalled on the
+  hosted runner to request `gh pr merge --auto --squash`. It never
+  merges directly and never approves reviews;
+- GitHub's repository auto-merge setting and any branch-protection
+  rules remain authoritative: **one-time prerequisite** — enable
+  "Allow auto-merge" in repository settings (Settings → General →
+  Pull Requests) for auto-merge to work at all.
+
+**Consequence:** with no required checks on this repository (local
+validation is authoritative; CI is an optional `workflow_dispatch`
+fallback, not a required check), an eligible bot PR may merge promptly
+without a local `scripts/check.sh` run. If required checks are
+configured later, GitHub enforces them before auto-merging. The
+workflow is covered by `scripts/test-dependabot-automerge.sh`
+(actionlint + parsed-YAML meaning assertions), part of the static
+checks in `scripts/check.sh`.
+
+Review checklist for Dependabot PRs that are NOT auto-merged (e.g.
+human-created or retargeted ones, or once required checks exist), and
+for the post-merge machine verification of every update PR:
 
 1. Local validation passes: `scripts/check.sh` (static checks +
    `nix flake check` + non-activating toplevel build). CI is an
@@ -89,10 +125,12 @@ the report — the table is in the job summary. It never opens PRs
 ## Local validation (authoritative)
 
 `scripts/check.sh` is the repository-owned local gate for ordinary
-changes. It runs static checks (shell syntax, YAML/JSON parsing),
-`nix flake check`, and a non-activating toplevel build — it never
-switches, tests, or activates the system. Run it on the branch before
-merging any PR, Dependabot or not:
+changes. It runs static checks (shell syntax, YAML/JSON parsing,
+regression suites incl. `scripts/test-dependabot-automerge.sh`), `nix
+flake check`, and a non-activating toplevel build — it never switches,
+tests, or activates the system. Run it on the branch before merging any
+human-authored PR, and before the post-merge machine verification of
+any update PR (eligible Dependabot PRs auto-merge without it):
 
 ```bash
 scripts/check.sh                        # local gate (sudo build)
@@ -104,7 +142,10 @@ CI is an optional fallback for an independent clean-run build: the
 `build` job is `workflow_dispatch`-only and runs the same
 `scripts/check.sh --nix-build-only`. A green CI run is not required
 and does not replace local validation or the post-merge machine
-verification in the next section.
+verification in the next section. Eligible Dependabot PRs are
+auto-merged by GitHub (see "Dependabot") — they may land without a
+local run, which is exactly why the post-merge verification below is
+authoritative for what actually runs on the machine.
 
 ## Targeted manual updates
 

@@ -1,0 +1,51 @@
+# GitHub-native Dependabot auto-merge (replaces the cancelled Firstmate
+# Dependabot monitor).
+#
+# Dependabot already opens the version-update PRs; this workflow only asks
+# GitHub to squash-auto-merge the eligible ones once the repository's own
+# merge requirements are met. GitHub's repository auto-merge setting and
+# any branch-protection rules remain authoritative. Consequence of the
+# current policy (no required checks; local validation is authoritative
+# and CI is an optional workflow_dispatch fallback): an eligible bot PR
+# may merge promptly. If required checks are configured later, GitHub
+# enforces them before auto-merging.
+#
+# Safety model:
+#   - Uses pull_request_target (trusted base-branch workflow form), but
+#     never checks out, executes, or evaluates pull-request code. There
+#     is no checkout step at all; the job only calls the GitHub CLI
+#     preinstalled on hosted runners.
+#   - The only PR-controlled value used is the PR URL, passed through an
+#     environment variable and never spliced into a shell command.
+#   - The job is restricted to pull requests whose author is exactly
+#     `dependabot[bot]`, whose base is the repository default branch, and
+#     whose repository is exactly linhnt89/nixos-config. Draft PRs are
+#     skipped (GitHub cannot auto-merge drafts; the ready_for_review
+#     event picks them up once they become ready).
+#   - Requests squash auto-merge only (--auto); never a direct merge,
+#     never an approval. Review is left to the captain.
+name: dependabot-auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    name: Enable auto-merge for Dependabot PR
+    runs-on: ubuntu-latest
+    if: >-
+      github.repository == 'linhnt89/nixos-config'
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.event.pull_request.base.ref == github.event.repository.default_branch
+      && github.event.pull_request.draft == false
+    steps:
+      - name: Request squash auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

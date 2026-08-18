@@ -3,7 +3,10 @@
 # check.sh — repository-owned local validation (authoritative gate).
 #
 # Runs, in order:
-#   1. static checks: shell syntax of the repo's scripts, YAML parse of
+#   1. static checks: shell syntax of the repo's scripts, the repo's
+#      scripts/test-*.sh regression suites (mango preflight/probe/blueman/
+#      default-session, nixdev-config update automation, shared-Firstmate
+#      ownership, dependabot auto-merge workflow), YAML parse of
 #      .github/*.yml and .github/dependabot.yml, JSON parse of flake.lock
 #   2. `nix flake check`
 #   3. a NON-ACTIVATING build of the metacube NixOS toplevel
@@ -121,6 +124,13 @@ if ! scripts/test-ownership.sh; then
   exit 1
 fi
 echo "    ok scripts/test-ownership.sh"
+
+echo '  dependabot auto-merge workflow regression tests:'
+if ! scripts/test-dependabot-automerge.sh; then
+  echo "    fail: scripts/test-dependabot-automerge.sh" >&2
+  exit 1
+fi
+echo "    ok scripts/test-dependabot-automerge.sh"
 
 yaml_parser=""
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then

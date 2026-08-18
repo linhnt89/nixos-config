@@ -1,14 +1,18 @@
 # Dependabot version updates for MetaCube.
 #
-# One targeted PR per dependency. Every PR is validated locally with
-# scripts/check.sh before merge; CI (workflow_dispatch only) is an
-# optional fallback, not a required check. No scheduled workflow
-# opens PRs - Dependabot is the only bot here.
+# One targeted PR per dependency. Eligible bot PRs (author dependabot[bot],
+# base = default branch, this repo) are squash-auto-merged by GitHub via
+# .github/workflows/dependabot-auto-merge.yml; with no required checks they
+# may merge promptly, so machine verification happens after merge (see
+# docs/updates-runbook.md). CI (workflow_dispatch only) is an optional
+# fallback, not a required check. No scheduled workflow opens PRs -
+# Dependabot is the only bot here.
 #
 # What Dependabot does NOT cover (kept manual on purpose):
 #   - nixpkgs-unstable: excluded from the stable-lane group so the Pi
-#     lane still moves deliberately. It can still receive its own
-#     individual PRs; review those like any other update.
+#     lane still moves deliberately. Its individual PRs are subject to
+#     the same auto-merge as every other eligible bot PR; deliberate
+#     movement is enforced by the Dependabot schedule, not by review.
 #
 # Shared Firstmate toolchain pins (no-mistakes, herdr, treehouse, the
 # axi CLIs) are nixdev-config-owned since the firstmateTools refactor;
