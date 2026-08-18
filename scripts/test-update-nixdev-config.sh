@@ -21,6 +21,8 @@
 #   K. portable paths end-to-end   (default canonical+sibling under \$HOME;
 #      explicit overrides; gh-axi API fallback; missing explicit sibling
 #      refused before any mutation)
+#   L. PR-number parsing            (gh-axi empty/no-match envelope creates a
+#      PR; genuine numeric reuse is preserved; nonnumeric output is refused)
 #
 # ALL OFFLINE: no network, no real nix, no real gh-axi, no GitHub
 # mutations. GitHub interactions are stubbed via a fake gh-axi in a temp
@@ -230,10 +232,17 @@ case "\$1" in
     elif [[ "\$path" == /repos/linhnt89/nixdev-config/commits/HEAD ]] && [[ "\$expr" == ".sha" ]]; then
       val="\${FAKE_ND_HEAD:-$REV_ND_NEW}"
     elif [[ "\$path" == /repos/linhnt89/nixos-config/pulls?state=open* ]]; then
-      if [[ -f "\$state_dir/created" ]]; then
-        val="1"
+      # gh-axi --jq empty returns this TOON envelope; a numeric jq result
+      # is rendered as a raw scalar. Keep both shapes in the fixture.
+      if [[ -n "\${FAKE_PR_QUERY_OUTPUT:-}" ]]; then
+        printf '%s\n' "\$FAKE_PR_QUERY_OUTPUT"
+        exit 0
+      elif [[ -f "\$state_dir/created" ]]; then
+        printf '1\n'
+        exit 0
       else
-        val=""
+        printf 'api_response:\n  body: ""\n  truncated: false\n'
+        exit 0
       fi
     elif [[ "\$path" == /repos/linhnt89/nixos-config/pulls/1 ]]; then
       case "\$expr" in
@@ -356,7 +365,7 @@ run_updater() {
   [[ -z "${NIXDEV_UPDATE_NIXDEV_SRC:-}" ]] || envs+=(NIXDEV_UPDATE_NIXDEV_SRC="$NIXDEV_UPDATE_NIXDEV_SRC")
   local v
   for v in FAKE_MERGE_FAIL FAKE_PR_HEAD_SHA FAKE_PR_MERGEABLE FAKE_PR_STATE \
-           FAKE_PR_MERGED FAKE_PR_HEAD_REF FAKE_PR_BASE_REF \
+           FAKE_PR_MERGED FAKE_PR_HEAD_REF FAKE_PR_BASE_REF FAKE_PR_QUERY_OUTPUT \
            FAKE_CHECK_MARKER FAKE_CHECK_RESULT FAKE_API_DOWN FAKE_API_FLAP \
            FAKE_ND_HEAD; do
     if [[ -n "${!v:-}" ]]; then
@@ -518,6 +527,61 @@ else
   dump_out
 fi
 unset FAKE_MERGE_FAIL FAKE_PR_MERGED
+
+# ---------------------------------------------------------------------------
+# L. PR-number parsing: no-match envelope, numeric reuse, invalid output
+# ---------------------------------------------------------------------------
+
+echo '== L. PR-number parsing and PR discovery =='
+
+# The reported gh-axi no-match shape is `api_response: body: ""`.
+# It must take the create path, never become /pull/"".
+mk_fixture
+export FAKE_LOG="$TD/logL1"
+out="$(run_updater 2>&1)" && rc=0 || rc=$?
+create_calls="$(grep -c 'call: pr create' "$TD/logL1" || true)"
+malformed_api="$(grep -cF '/pulls/""' "$TD/logL1" || true)"
+malformed_merge="$(grep -cF 'call: pr merge ""' "$TD/logL1" || true)"
+if [[ $rc -eq 0 && "$create_calls" == "1" && "$malformed_api" == "0" && "$malformed_merge" == "0" ]]; then
+  pass "empty gh-axi envelope creates a PR without an empty PR URL/API path"
+else
+  fail "empty gh-axi envelope was treated as an existing PR (rc=$rc create=$create_calls malformed-api=$malformed_api malformed-merge=$malformed_merge)"
+  dump_out
+fi
+
+# A real open PR is still reused when gh-axi returns its numeric jq scalar.
+mk_fixture
+mkdir -p "$TD/fake-state"
+touch "$TD/fake-state/created"
+export FAKE_LOG="$TD/logL2"
+out="$(run_updater 2>&1)" && rc=0 || rc=$?
+create_calls="$(grep -c 'call: pr create' "$TD/logL2" || true)"
+merge_calls="$(grep -c 'call: pr merge 1' "$TD/logL2" || true)"
+if [[ $rc -eq 0 && "$create_calls" == "0" && "$merge_calls" == "1" ]] \
+   && grep -q 'reusing existing open PR #1' <<<"$out"; then
+  pass "genuine existing open PR #1 is reused and merged"
+else
+  fail "genuine existing open PR was not reused (rc=$rc create=$create_calls merge=$merge_calls)"
+  dump_out
+fi
+
+# Nonnumeric output is neither an existing PR nor an identifier for the
+# post-create lookup; it must stop before any malformed identity/API/merge use.
+mk_fixture
+export FAKE_LOG="$TD/logL3" FAKE_PR_QUERY_OUTPUT='not-a-number'
+out="$(run_updater 2>&1)" && rc=0 || rc=$?
+unset FAKE_PR_QUERY_OUTPUT
+create_calls="$(grep -c 'call: pr create' "$TD/logL3" || true)"
+malformed_api="$(grep -cF '/pulls/not-a-number' "$TD/logL3" || true)"
+malformed_merge="$(grep -cF 'call: pr merge not-a-number' "$TD/logL3" || true)"
+malformed_url="$(grep -cF 'pull/not-a-number' <<<"$out" || true)"
+if [[ $rc -ne 0 && "$create_calls" == "1" && "$malformed_api" == "0" \
+      && "$malformed_merge" == "0" && "$malformed_url" == "0" ]]; then
+  pass "nonnumeric PR output is refused before URL/API/merge use"
+else
+  fail "nonnumeric PR output escaped validation (rc=$rc create=$create_calls malformed-api=$malformed_api malformed-merge=$malformed_merge malformed-url=$malformed_url)"
+  dump_out
+fi
 
 # ---------------------------------------------------------------------------
 # I. GitHub outage handling
