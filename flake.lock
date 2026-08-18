@@ -51,11 +51,11 @@
         "treehouse": "treehouse"
       },
       "locked": {
-        "lastModified": 1787029495,
-        "narHash": "sha256-c6+qWss4OfVFRNtBJkLjA8MGZqLdGRJ3cGV4LIhoaJ8=",
+        "lastModified": 1787054764,
+        "narHash": "sha256-Qa1rhM+HVPsakRA+gujFIie5hY6Kff0dREnxfsSlaME=",
         "owner": "linhnt89",
         "repo": "nixdev-config",
-        "rev": "88f1aea52384f156ff7009eae611727b1ef527a9",
+        "rev": "b85f320cb6ec34389699122b2ca1dc11898421c5",
         "type": "github"
       },
       "original": {
