@@ -261,7 +261,11 @@ Regression tests for the guards run as part of `scripts/check.sh`:
 `scripts/test-update-nixdev-config.sh` is fully offline (fake gh-axi/
 nix/check.sh, local bare origin) and covers dirty-tree refusal, lock-
 scope refusal, validation failure, PR identity mismatch, merge failure,
-GitHub outage handling, and the no-activation guarantee.
+GitHub outage handling, PR discovery from both the reported gh-axi
+`api_response: body: ""` no-match envelope and a genuine numeric open PR,
+plus refusal of nonnumeric PR output and the no-activation guarantee. The
+updater treats only a positive decimal PR number as an existing PR or as
+safe input to identity, state, URL, and merge checks.
 
 ## From merged update to a running system
 

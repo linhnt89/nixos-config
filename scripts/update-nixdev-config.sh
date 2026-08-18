@@ -155,6 +155,23 @@ parse_body() {
   fi
 }
 
+# is_valid_pr_number VALUE -> true only for a positive decimal GitHub PR
+# number. In particular, gh-axi's TOON envelope for jq `empty` can yield the
+# non-empty text `""`; that is no match, not a PR identifier.
+is_valid_pr_number() {
+  [[ "${1:-}" =~ ^[1-9][0-9]*$ ]]
+}
+
+# require_pr_number VALUE -> refuse before the value can reach a PR URL/API
+# path, identity check, or merge operation.
+require_pr_number() {
+  local num="${1:-}"
+  is_valid_pr_number "$num" || {
+    echo "invalid PR number '$num'; refusing to use it" >&2
+    return 1
+  }
+}
+
 # is_transient_err TEXT -> true when a gh-axi failure looks like a GitHub
 # outage or rate limit instead of a hard error (auth/validation/404).
 is_transient_err() {
@@ -477,6 +494,7 @@ run_validation() {
 # mergeability was computed (true = mergeable; false = refusing).
 verify_pr_identity() {
   local num="$1" validated="$2" i state base headref headsha mergeable
+  require_pr_number "$num" || return 1
   for ((i = 1; i <= POLL_TRIES; i++)); do
     state="$(gh_api_scalar "/repos/$REPO/pulls/$num" '.state' || return 1)"
     base="$(gh_api_scalar "/repos/$REPO/pulls/$num" '.base.ref' || return 1)"
@@ -505,6 +523,7 @@ verify_pr_identity() {
 # claims success without this confirmation.
 confirm_merged() {
   local num="$1" i merged msha
+  require_pr_number "$num" || return 1
   for ((i = 1; i <= POLL_TRIES; i++)); do
     merged="$(gh_api_scalar "/repos/$REPO/pulls/$num" '.merged' || true)"
     if [[ "$merged" == "true" ]]; then
@@ -555,6 +574,10 @@ guard_dispatch() {
     lock-scope)
       [[ $# -eq 4 ]] || { echo "lock-scope guard: OLD NEW TARGET required" >&2; exit 1; }
       lock_scope_check "$2" "$3" "$4"
+      ;;
+    pr-number)
+      [[ $# -eq 2 ]] || { echo "pr-number guard: VALUE required" >&2; exit 1; }
+      require_pr_number "$2"
       ;;
     no-activation)
       # The activation instructions live ONLY inside the quoted heredoc
@@ -740,22 +763,27 @@ Automated narrow lock bump via \`scripts/update-nixdev-config.sh\`:
 
 echo "==> opening the PR via gh-axi"
 PR_NUM="$(gh_api_scalar "/repos/$REPO/pulls?state=open&head=$OWNER:$BRANCH" '.[0].number // empty' || true)"
-if [[ -n "$PR_NUM" ]]; then
+if is_valid_pr_number "$PR_NUM"; then
   echo "reusing existing open PR #$PR_NUM for branch $BRANCH"
 else
+  # An empty result, including gh-axi's TOON `body: ""` envelope, and any
+  # other non-numeric result mean no usable existing PR was found. Clear it
+  # before the create/recheck path so it cannot reach a URL or API path.
+  PR_NUM=""
   if ! "$GH_AXI_BIN" pr create --repo "$REPO" --title "$TITLE" --body-file "$BODY_FILE" --base "$BASE_REF" --head "$BRANCH"; then
     PR_NUM="$(gh_api_scalar "/repos/$REPO/pulls?state=open&head=$OWNER:$BRANCH" '.[0].number // empty' || true)"
-    [[ -n "$PR_NUM" ]] || {
-      echo "error: gh-axi pr create failed and no PR exists for $BRANCH (the branch is pushed to origin)." >&2
+    if ! is_valid_pr_number "$PR_NUM"; then
+      echo "error: gh-axi pr create failed and no valid PR exists for $BRANCH (the branch is pushed to origin)." >&2
       echo "create the PR manually, then re-run after the result is merged, or inspect the branch in $CANON." >&2
       exit 1
-    }
+    fi
     echo "warning: pr create reported a transient error, but PR #$PR_NUM exists; continuing."
   else
     PR_NUM="$(gh_api_scalar "/repos/$REPO/pulls?state=open&head=$OWNER:$BRANCH" '.[0].number // empty')"
-    [[ -n "$PR_NUM" ]] || DIE "PR was created but its number could not be resolved"
+    require_pr_number "$PR_NUM" || DIE "PR was created but its number could not be resolved"
   fi
 fi
+require_pr_number "$PR_NUM" || DIE "could not resolve a valid PR number for $BRANCH"
 PR_URL="https://github.com/$REPO/pull/$PR_NUM"
 echo "PR: $PR_URL"
 
