@@ -202,7 +202,7 @@ What the run does, in order:
    - `git fetch origin main` must succeed and local `main` must equal
      `origin/main` (a conflict-free, fast-forwardable starting point);
    - `gh-axi` must be installed, authenticated, and able to read the
-     private `linhnt89/nixos-config` repository (proves the GitHub path);
+     `linhnt89/nixos-config` repository (proves the GitHub path);
    - if the lock already sits at the upstream head it exits 0 with
      "already up to date" — no branch, no PR.
 2. Resolves the upstream default-branch head from the sibling
