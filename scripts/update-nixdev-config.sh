@@ -47,7 +47,7 @@
 #     completely clean (no staged, unstaged, or untracked changes);
 #   * `git fetch origin <base>` succeeds and local <base> equals
 #     origin/<base> (conflict-free, fast-forwardable starting point);
-#   * gh-axi is installed, authenticated, and can read the private
+#   * gh-axi is installed, authenticated, and can read the
 #     linhnt89/nixos-config repository (proves the GitHub path);
 #   * the lock is not already at the upstream default-branch head
 #     ("already up to date" -> exit 0, no branch, no PR).
@@ -621,7 +621,7 @@ OWNER="${REPO%/*}"
 
 echo "==> checking the GitHub path (gh-axi, authenticated)"
 gh_api_scalar "/repos/$REPO" '.full_name' >/dev/null \
-  || DIE "gh-axi cannot read $REPO; check installation/authentication (the repo is private)"
+  || DIE "gh-axi cannot read $REPO; check installation/authentication"
 
 LOCK="$CANON/flake.lock"
 [[ -f "$LOCK" ]] || DIE "flake.lock not found at $LOCK"
