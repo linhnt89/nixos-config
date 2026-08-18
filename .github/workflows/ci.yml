@@ -58,7 +58,7 @@ jobs:
           echo 'Disk after cleanup:'
           df -h / /mnt 2>/dev/null || df -h /
 
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@v31
 
       - name: Local check (static checks + flake check + toplevel + HM eval)
         run: ./scripts/check.sh --nix-build-only
