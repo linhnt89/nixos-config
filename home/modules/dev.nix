@@ -8,19 +8,37 @@
 # the portable common package set supplies curl/wget/yq-go/just/tree/zip/
 # unzip/Node/Python/... packaged by nixdev-config. The desktop role
 # profile additionally installs the `gh` package (and never `glab`).
+# The shared Firstmate toolchain (gh-axi & co, no-mistakes, treehouse,
+# and the pinned herdr binary via `nixdev.firstmate.enableHerdr`) comes
+# from nixdev-config's opt-in `firstmateTools` module, wired in flake.nix
+# with the exported `packages.x86_64-linux.treehouse` — this repo declares
+# no treehouse/herdr/no-mistakes inputs anymore.
 #
 # This adapter carries ONLY MetaCube-personal desktop tooling: the gh
 # client behavior (SSH protocol, no HTTPS credential helper), the lazygit
 # UI, the Pi lane (pkgsUnstable, always owned by this repo), and the
-# local Firstmate/treehouse/herdr modules below.
+# user-level treehouse pool default below.
 {
 
   imports = [
     ./pi.nix
-    ./treehouse.nix
-    ./herdr.nix
-    ./firstmate.nix
   ];
+
+  #
+  # Treehouse user-level default
+  #
+  # The treehouse PACKAGE is owned by nixdev-config's firstmateTools
+  # module; the per-repo capacity policy lives consumer-side in the
+  # repo-root treehouse.toml (`max_trees = 8` for this repo) and
+  # overrides this user-level default. This file keeps the pre-refactor
+  # machine behavior for every other repository: start with a
+  # deliberately small pool. Increase only when actual parallel
+  # workloads justify it. No lifecycle hooks are configured.
+  #
+
+  xdg.configFile."treehouse/config.toml".text = ''
+    max_trees = 4
+  '';
 
   #
   # GitHub CLI — desktop behavior

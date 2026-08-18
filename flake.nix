@@ -16,30 +16,17 @@
     # Public portable Home Manager modules/profiles, shared with the work
     # WSL2 laptop. The `desktop` role profile provides the portable
     # shell/development layer (zsh/starship/fzf/bat/eza/direnv/delta/git
-    # structure + the shared common package set) and `gh` — never `glab`.
+    # structure + the shared common package set) and `gh` — never `glab`;
+    # the opt-in `firstmateTools` module supplies the shared Firstmate
+    # toolchain (gh-axi & co, no-mistakes, treehouse, and optionally the
+    # pinned herdr binary). Shared toolchain pins are nixdev-config-owned;
+    # this consumer declares no treehouse/herdr/no-mistakes inputs.
     #
     # PUBLIC INPUT: fetching requires no GitHub access-token; no
     # credential belongs in nix.conf or NIX_CONFIG. The lock entry pins
     # the rev + narHash and contains no secret. See
     # docs/nixdev-config-integration.md for setup, update, and rollback.
     nixdev-config.url = "github:linhnt89/nixdev-config";
-
-    treehouse = {
-      url = "github:kunchenguid/treehouse";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Agent-aware terminal/session runtime.
-    herdr.url = "github:herdrdev/herdr/v0.8.0";
-
-    # Firstmate requires no-mistakes >= 1.31.2.
-    #
-    # Pin the current stable Linux amd64 release archive rather
-    # than letting Firstmate's bootstrap installer mutate the host.
-    noMistakes = {
-      url = "https://github.com/kunchenguid/no-mistakes/releases/download/v1.46.0/no-mistakes-v1.46.0-linux-amd64.tar.gz";
-      flake = false;
-    };
   };
 
   outputs =
@@ -47,9 +34,6 @@
       nixpkgs,
       nixpkgs-unstable,
       home-manager,
-      treehouse,
-      herdr,
-      noMistakes,
       nixdev-config,
       ...
     }:
@@ -80,21 +64,26 @@
                 pkgsUnstable =
                   nixpkgs-unstable.legacyPackages.${system};
 
-                inherit
-                  treehouse
-                  herdr
-                  noMistakes
-                  ;
+                # The pinned treehouse package the firstmateTools module
+                # requires, taken from THIS flake's public package output
+                # (no treehouse flake input on the consumer side).
+                # See docs/firstmate.md in nixdev-config.
+                treehousePkg =
+                  nixdev-config.packages.${system}.treehouse;
               };
 
               # Desktop role from the nixdev-config flake supplies
               # the portable shell/dev layer (shell/starship/fzf/bat/eza/
               # direnv/delta/git structure, common packages incl. Python/
-              # Node) plus `gh`. Everything else stays local: the modules
-              # under ./home/modules are MetaCube-personal adapters.
+              # Node) plus `gh`, and the opt-in firstmateTools module
+              # supplies the shared Firstmate toolchain (pinned herdr for
+              # this PC's Herdr backend is enabled in home/linhnt.nix).
+              # Everything else stays local: the modules under
+              # ./home/modules are MetaCube-personal adapters.
               home-manager.users.linhnt = {
                 imports = [
                   nixdev-config.homeManagerModules.desktop
+                  nixdev-config.homeManagerModules.firstmateTools
                   ./home/linhnt.nix
                 ];
               };

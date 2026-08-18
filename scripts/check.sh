@@ -4,13 +4,12 @@
 #
 # Runs, in order:
 #   1. static checks: shell syntax of the repo's scripts, YAML parse of
-#      .github/*.yml and .github/dependabot.yml, JSON parse of
-#      flake.lock and the node-tools lockfiles
+#      .github/*.yml and .github/dependabot.yml, JSON parse of flake.lock
 #   2. `nix flake check`
 #   3. a NON-ACTIVATING build of the metacube NixOS toplevel
 #   4. full EVALUATION of the Home Manager user configuration
 #      (instantiates every imported Home Manager module, including
-#      the nixdev-config desktop role modules)
+#      the nixdev-config desktop role and firstmateTools modules)
 #
 # It never switches, tests, or activates the system. This is the local
 # check every change — including Dependabot PRs — must pass before
@@ -116,6 +115,13 @@ if ! scripts/test-update-nixdev-config.sh; then
 fi
 echo "    ok scripts/test-update-nixdev-config.sh"
 
+echo '  shared-Firstmate ownership + Dependabot sweep timer regression tests:'
+if ! scripts/test-ownership.sh; then
+  echo "    fail: scripts/test-ownership.sh" >&2
+  exit 1
+fi
+echo "    ok scripts/test-ownership.sh"
+
 yaml_parser=""
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
   yaml_parser="python3"
@@ -166,7 +172,7 @@ elif command -v nix >/dev/null 2>&1; then
 fi
 
 echo '  JSON parse:'
-json_files=(flake.lock home/firstmate/node-tools/package.json home/firstmate/node-tools/package-lock.json)
+json_files=(flake.lock)
 existing_json=()
 for f in "${json_files[@]}"; do
   [[ -f "$f" ]] && existing_json+=("$f")

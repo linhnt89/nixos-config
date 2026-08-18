@@ -14,8 +14,10 @@ procedure; the README section "Updating dependencies" is the short form.
 - **Never self-update Nix-managed tools.** `no-mistakes update`,
   `herdr update`, `treehouse update`, `pi update` and `npm install -g`
   are the wrong path on this host: every tool is immutable in the Nix
-  store. Versions change only through this repository's flake/npm pins,
-  a rebuild, and (after approval) a switch.
+  store. Versions change only through the repo pins (nixdev-config owns
+  the shared Firstmate toolchain; this repo owns nixpkgs/nixpkgs-unstable/
+  home-manager/nixdev-config pins and the Pi lane), a rebuild, and
+  (after approval) a switch.
 - **Never bump `stateVersion`** (`system.stateVersion` /
   `home.stateVersion`, currently `26.05`) during an upgrade. They are
   compatibility settings tied to the original installation. See the
@@ -25,21 +27,23 @@ procedure; the README section "Updating dependencies" is the short form.
 
 | Lane | Pin | How it moves |
 | --- | --- | --- |
-| Stable system packages | `nixpkgs` input (`nixos-26.05`) | Dependabot `stable-lane` PR (grouped with home-manager + treehouse) or `nix flake update nixpkgs` |
+| Stable system packages | `nixpkgs` input (`nixos-26.05`) | Dependabot `stable-lane` PR (grouped with home-manager) or `nix flake update nixpkgs` |
 | Pi lane (unstable) | `nixpkgs-unstable` input | Dependabot individual PR or `nix flake update nixpkgs-unstable` |
 | Home Manager | `home-manager` (`release-26.05`, follows nixpkgs) | moves with `nixpkgs`; Dependabot |
-| Treehouse | `treehouse` (follows nixpkgs) | Dependabot |
-| nixdev-config | `nixdev-config` (public repo, `github:linhnt89/nixdev-config`; desktop's portable Home Manager layer) | Dependabot PR, `nix flake lock --update-input nixdev-config`, or `scripts/update-nixdev-config.sh` (automated narrow lane); see `docs/nixdev-config-integration.md` |
-| Herdr | `herdr` tag (`v0.8.0`) | deliberate `flake.nix` ref edit (Dependabot can propose it) |
-| no-mistakes | tarball URL in `flake.nix` | `scripts/update-no-mistakes.sh` only (Dependabot cannot bump tarball inputs) |
-| Node CLIs | `home/firstmate/node-tools/package.json` + `package-lock.json` (exact pins) | Dependabot npm PR or `npm install --package-lock-only` |
+| nixdev-config | `nixdev-config` (public repo, `github:linhnt89/nixdev-config`; desktop's portable Home Manager layer **and** the shared Firstmate toolchain) | Dependabot PR, `nix flake lock --update-input nixdev-config`, or `scripts/update-nixdev-config.sh` (automated narrow lane); see `docs/nixdev-config-integration.md` |
 | CI actions | `.github/workflows/*` | Dependabot github-actions PR (monthly) |
+
+Shared Firstmate toolchain pins (treehouse, herdr, no-mistakes, and the
+axi CLIs) are **nixdev-config-owned** since the firstmateTools refactor:
+this repo declares no `treehouse`/`herdr`/`noMistakes` flake inputs and no
+local node-tools pin set. Bumps for those land in
+`linhnt89/nixdev-config` (its own Dependabot + PRs) and reach this machine
+after the nixdev-config pin above is updated and the machine is rebuilt.
 
 Notes:
 
-- Updating `nixpkgs` cascades to `home-manager` and `treehouse` (their
-  inputs follow ours) but **not** to `herdr` (pins its own nixpkgs) or
-  `noMistakes` (tarball).
+- Updating `nixpkgs` cascades to `home-manager` (its input follows
+  ours).
 - `nixpkgs-unstable` is excluded from the `stable-lane` Dependabot group
   on purpose: the Pi lane should only move when a Pi update is actually
   wanted, not silently with every stable bump. Its individual Dependabot
@@ -59,11 +63,11 @@ Review checklist for every Dependabot PR:
 2. The diff touches only the intended input (`flake.lock`, possibly
    `flake.nix` for ref rewrites) or the intended npm pins.
 3. `nixpkgs-unstable` PRs: confirm the Pi package change is wanted.
-4. Herdr ref PRs: skim the herdr changelog first; stay on stable tags.
 
-Dependabot does not touch the `noMistakes` tarball input; that is the
-script below. No other bot runs — do not add Renovate or a second PR
-automation, and do not let the scheduled staleness job open PRs.
+Dependabot does not touch the shared Firstmate toolchain pins — those are
+nixdev-config-owned (see the lanes table above). No other bot runs — do
+not add Renovate or a second PR automation, and do not let the scheduled
+staleness job open PRs.
 
 ## Staleness reporting
 
@@ -111,22 +115,12 @@ nix flake update nixpkgs
 # Pi lane only:
 nix flake update nixpkgs-unstable
 
-# Herdr tag bump (e.g. v0.9.0): edit flake.nix first, then re-lock:
-#   herdr.url = "github:herdrdev/herdr/v0.9.0";
-nix flake lock --update-input herdr
-
 # nixdev-config (public input; fetches without any GitHub access-token):
 nix flake lock --update-input nixdev-config
 
-# Node CLIs: let Dependabot do it, or regenerate the lock (exact pins;
-# integrity hashes live in package-lock.json, so Nix needs no hashes):
-cd home/firstmate/node-tools
-npm install --package-lock-only
-
-# no-mistakes (stable only; refuses malformed/prerelease/downgrade/below-floor):
-scripts/update-no-mistakes.sh            # latest stable
-scripts/update-no-mistakes.sh v1.48.0    # explicit version
-scripts/update-no-mistakes.sh --dry-run  # preview only
+# Shared Firstmate toolchain pins (treehouse/herdr/no-mistakes/axi):
+# owned by nixdev-config — bump there, then re-pin nixdev-config and
+# rebuild. This repo has no local pins for them anymore.
 ```
 
 After any lock change, commit `flake.lock` together with the change —
@@ -259,7 +253,8 @@ canonical checkout:
    ```
    CI and the staleness report never switch, and never run this step.
 
-After a no-mistakes bump, **firstmate restarts the shared
+After a shared-toolchain bump that lands through a nixdev-config update
+(e.g. a no-mistakes bump), **firstmate restarts the shared
 no-mistakes daemon** (the systemd user unit points at the old store
 path until then; after ~14 days the old path would be GC'd, breaking
 the unit). Crewmates never restart the daemon — it is one instance
@@ -277,11 +272,11 @@ herdr --version && treehouse --version && pi --version
 ```
 
 `no-mistakes --version` may print its own update banner; the Nix
-install is updated via this repo, not `no-mistakes update`. If the
-banner is noise, `NO_MISTAKES_NO_UPDATE_CHECK=1` suppresses the
-background check. The repo pins must stay above firstmate's floor
-constants (see `fm-bootstrap.sh`); check that after every firstmate
-update and after every npm pin bump.
+install is updated via nixdev-config's pins, not `no-mistakes update`.
+If the banner is noise, `NO_MISTAKES_NO_UPDATE_CHECK=1` suppresses the
+background check. The nixdev-config pins must stay above firstmate's
+floor constants (see `fm-bootstrap.sh`); check that after every
+nixdev-config update and after every npm pin bump there.
 
 ## Rollback
 
@@ -302,8 +297,9 @@ build-verified. Rollback never touches `stateVersion`.
 - **Pi**: packaged by `nixpkgs-unstable`; bumped through the Pi lane.
   `pi update` is for non-Nix installs. Pi's runtime data
   (`~/.pi/agent/…`) is outside Git — see `docs/pi-settings-boundary.md`.
-- **Herdr / Treehouse / no-mistakes**: Nix-managed via this repo; their
-  self-update commands are documented but not used here.
+- **Herdr / Treehouse / no-mistakes / the axi CLIs**: Nix-managed via
+  nixdev-config's firstmateTools pins; their self-update commands are
+  documented but not used here.
 
 ## NixOS branch migration (26.11)
 

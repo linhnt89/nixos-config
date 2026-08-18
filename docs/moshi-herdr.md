@@ -15,7 +15,7 @@ machine. Moshi is a window into them.
 | SSH server (sshd) with key-only auth | `modules/nixos/ssh.nix` | declarative |
 | `mosh` (provides `mosh-server`) | `home/modules/moshi.nix` | declarative |
 | `tmux` (durable workspaces fallback) | `home/modules/moshi.nix` | declarative |
-| `herdr` (agent multiplexer, v0.8.0) | `home/modules/herdr.nix` via flake input | declarative |
+| `herdr` (agent multiplexer, v0.8.0) | nixdev-config `homeManagerModules.firstmateTools` (pinned asset; enabled via `nixdev.firstmate.enableHerdr` in `home/linhnt.nix`) | declarative |
 | Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
 | Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1`, plus all tailnet peers on `tailscale0` (the LAN source restriction applies only to `eno1`); sshd's automatic all-interface open is disabled; Tailscale UDP 41641 is opened separately for `tailscaled`; SSH/mosh stay closed on WAN/public and unused interfaces | declarative |
 | Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
@@ -211,7 +211,8 @@ ssh metacube 'echo $PATH; command -v herdr; command -v tmux; command -v mosh-ser
 
 All three should print paths under `/etc/profiles/per-user/linhnt/bin`.
 If `command -v herdr` prints nothing, the PATH note in
-`home/modules/herdr.nix` explains why it should not.
+nixdev-config's firstmateTools module (and `home/modules/moshi.nix`)
+explains why it should not.
 
 - **Moshi doesn't detect Herdr** — most common cause is the
   non-interactive PATH, which is already handled here (zsh +
