@@ -23,7 +23,7 @@
 #
 # Versions this configuration is generated for (pinned nixpkgs-unstable):
 #   - mango 0.15.6     (config keys verified against assets/config.conf)
-#   - noctalia 5.0.0-beta.7 (schema verified against example.toml)
+#   - noctalia 5.0.0-beta.8 (schema verified against example.toml)
 #
 # See docs/mango-noctalia-experiment.md for the runbook and rollback path.
 
@@ -292,10 +292,17 @@ let
     [wallpaper.default]
     path = "${wallpaper}"
 
-    # Idle lock at 600 s, mirroring the stable hypridle listener.
+    # Idle behaviors mirroring the stable hypridle listeners: lock at 600 s,
+    # then power the monitor off ~1 min later (DPMS off; input wakes it back
+    # to the lock screen).
     [idle.behavior.lock]
     timeout = 600
     action = "lock"
+    enabled = true
+
+    [idle.behavior.screen-off]
+    timeout = 660
+    action = "screen_off"
     enabled = true
   '';
 
