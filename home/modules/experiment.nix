@@ -1,6 +1,7 @@
 { config
 , lib
 , pkgs
+, pkgsUnstable
 , ...
 }:
 
@@ -87,6 +88,55 @@ let
     Type=Application
     NotShowIn=mango
   '';
+
+  # Manual-lock screen-off wrapper -------------------------------------------
+  #
+  # Noctalia's `[idle.behavior.screen-off]` only measures seconds since the
+  # last input, so a manual lock during activity (SUPER+L) would never reach
+  # its 660 s threshold and the monitor would stay on. This wrapper makes the
+  # manual path count from the lock moment instead: lock via logind (Noctalia's
+  # session-lock integration listens for the logind Lock signal and raises its
+  # lock screen), wait 60 s, power the monitor off only if still locked, then
+  # poll until unlock and force the display back on (DPMS wake on input alone
+  # is not reliable on Mango). A single-instance flock keeps double keypresses
+  # from stacking timers. The unattended idle path in noctaliaConfig is
+  # unchanged and does not run this wrapper.
+  noctaliaLockScreenOff = pkgs.writeShellApplication {
+    name = "noctalia-lock-screen-off";
+    runtimeInputs = with pkgs; [
+      coreutils
+      util-linux
+      systemd
+      pkgsUnstable.noctalia
+    ];
+    text = ''
+      lock_file="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/noctalia-lock-screen-off.lock"
+      exec 9>"$lock_file" || exit 0
+      flock -n 9 || exit 0
+
+      locked() {
+        [ "$(loginctl show-session self -p LockedHint --value)" = "yes" ]
+      }
+
+      if ! locked; then
+        loginctl lock-session
+      fi
+
+      # Screen-off counts from the lock moment; skip if the user unlocked
+      # during the wait. Tolerate IPC failure so the unlock-restore below
+      # still runs (the script runs under `set -o errexit`).
+      sleep 60
+      if locked; then
+        noctalia msg dpms-off || echo "noctalia-lock-screen-off: dpms-off failed"
+      fi
+
+      # Restore the display as soon as the session unlocks.
+      while locked; do
+        sleep 2
+      done
+      noctalia msg dpms-on || echo "noctalia-lock-screen-off: dpms-on failed"
+    '';
+  };
 
   theme = import ../theme.nix;
   c = theme.colors;
@@ -191,7 +241,11 @@ let
     bind=SUPER,v,spawn,noctalia msg panel-toggle clipboard
     bind=SUPER+SHIFT,s,spawn,noctalia msg screenshot-region
     bind=SUPER,Escape,spawn,noctalia msg panel-toggle session
-    bind=SUPER,l,spawn,noctalia msg session lock
+    # Manual lock: wrapper instead of `noctalia msg session lock` so the
+    # monitor powers off ~60 s after the lock itself (not after 660 s of
+    # compositor idle — see noctaliaLockScreenOff above). The unattended
+    # idle path stays in Noctalia's [idle.behavior.*] below.
+    bind=SUPER,l,spawn,noctalia-lock-screen-off
     # Windows
     bind=SUPER,q,killclient,
     bind=SUPER,m,quit
@@ -382,6 +436,9 @@ in
     systemd.user.services = lib.genAttrs fallbackServices (_: {
       Service.ExecCondition = fallbackServiceCondition;
     });
+
+    # Manual-lock screen-off wrapper (bound to SUPER+L in mangoConfig).
+    home.packages = [ noctaliaLockScreenOff ];
 
     xdg.configFile."mango/config.conf".text = mangoConfig;
 
