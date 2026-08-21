@@ -94,10 +94,22 @@ let
   # Noctalia's `[idle.behavior.screen-off]` only measures seconds since the
   # last input, so a manual lock during activity (SUPER+L) would never reach
   # its 660 s threshold and the monitor would stay on. This wrapper makes the
-  # manual path count from the lock moment instead: lock via logind (Noctalia's
-  # session-lock integration listens for the logind Lock signal and raises its
-  # lock screen), wait 60 s, power the monitor off only if still locked, then
-  # poll until unlock and force the display back on (DPMS wake on input alone
+  # manual path count from the lock moment instead.
+  #
+  # Session resolution must be explicit: the Mango session is launched through
+  # UWSM, which runs apps in user-scope units outside the logind session
+  # cgroup, so caller-based resolution (`show-session self`, bare
+  # `lock-session`) fails with "Caller does not belong to any known session".
+  # Prefer $XDG_SESSION_ID, else scan the invoking user's sessions for a
+  # graphical type (wayland, then x11, then tty). The explicit id is used for
+  # BOTH the lock and every LockedHint poll.
+  #
+  # Lock goes through logind deliberately: Noctalia's session-lock integration
+  # (src/dbus/logind/logind_service.cpp) listens for the logind Lock signal to
+  # raise its lock screen, so `lock-session <id>` is the exact trigger its own
+  # integration uses — and it sets LockedHint for our still-locked polls. After
+  # the 60 s wait the monitor powers off only if still locked, then the wrapper
+  # polls until unlock and forces the display back on (DPMS wake on input alone
   # is not reliable on Mango). A single-instance flock keeps double keypresses
   # from stacking timers. The unattended idle path in noctaliaConfig is
   # unchanged and does not run this wrapper.
@@ -114,12 +126,40 @@ let
       exec 9>"$lock_file" || exit 0
       flock -n 9 || exit 0
 
+      # Resolve the logind session explicitly — caller attribution ("self")
+      # breaks under UWSM, which runs apps outside the logind session cgroup.
+      resolve_session() {
+        if [ -n "''${XDG_SESSION_ID:-}" ] \
+          && loginctl show-session "$XDG_SESSION_ID" -p Name --value >/dev/null 2>&1; then
+          printf '%s\n' "$XDG_SESSION_ID"
+          return 0
+        fi
+        local uid sid stype
+        uid="$(id -u)"
+        for want in wayland x11 tty; do
+          while read -r sid; do
+            stype="$(loginctl show-session "$sid" -p Type --value 2>/dev/null || true)"
+            if [ "$stype" = "$want" ]; then
+              printf '%s\n' "$sid"
+              return 0
+            fi
+          done < <(loginctl list-sessions --no-legend 2>/dev/null \
+            | awk -v u="$uid" '$2 == u {print $1}')
+        done
+        return 1
+      }
+
+      if ! session_id="$(resolve_session)"; then
+        echo "noctalia-lock-screen-off: cannot resolve the logind graphical session" >&2
+        exit 1
+      fi
+
       locked() {
-        [ "$(loginctl show-session self -p LockedHint --value)" = "yes" ]
+        [ "$(loginctl show-session "$session_id" -p LockedHint --value)" = "yes" ]
       }
 
       if ! locked; then
-        loginctl lock-session
+        loginctl lock-session "$session_id"
       fi
 
       # Screen-off counts from the lock moment; skip if the user unlocked
