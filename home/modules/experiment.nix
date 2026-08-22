@@ -130,6 +130,13 @@ let
   # even on early EOF, so the PIPELINE STATUS cannot distinguish activity
   # from timeout (pipefail is disabled locally regardless, so cat's SIGPIPE
   # death cannot poison the result) — hence the explicit byte count.
+  # Enumeration covers EVERY raw evdev node (/dev/input/event*), not just
+  # transport-specific by-path globs: Bluetooth HID devices have no by-path
+  # entry at all, and watching joystick/consumer-control nodes too is
+  # intentional — any input activity should wake the display. A BT device
+  # that reconnects mid-session keeps its evdev node unless the kernel
+  # destroys it; if a node disappears its watcher dies with its fd
+  # (acceptable for this experiment's scope).
   # If NO device is readable (input group missing / stale login session),
   # warn loudly on stderr and degrade to the unlock-poll restoration path. A single-instance flock keeps
   # double keypresses from stacking timers. The unattended idle path in
@@ -200,11 +207,11 @@ let
         exit 0
       fi
 
-      # Wake on input: watch raw keyboard/mouse event devices (needs the
+      # Wake on input: watch EVERY readable raw evdev node (needs the
       # `input` group) with CONTINUOUS readers — see the rationale above.
       watcher_pids=""
       watched=0
-      for dev in /dev/input/by-path/*-event-kbd /dev/input/by-path/*-event-mouse; do
+      for dev in /dev/input/event*; do
         if [ -c "$dev" ] && [ -r "$dev" ]; then
           (
             # Fire only on a FULL 32-byte chunk: wc -c must report 32.
