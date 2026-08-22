@@ -1,6 +1,7 @@
 { config
 , lib
 , pkgs
+, pkgsUnstable
 , ...
 }:
 
@@ -23,7 +24,7 @@
 #
 # Versions this configuration is generated for (pinned nixpkgs-unstable):
 #   - mango 0.15.6     (config keys verified against assets/config.conf)
-#   - noctalia 5.0.0-beta.7 (schema verified against example.toml)
+#   - noctalia 5.0.0-beta.8 (schema verified against example.toml)
 #
 # See docs/mango-noctalia-experiment.md for the runbook and rollback path.
 
@@ -87,6 +88,231 @@ let
     Type=Application
     NotShowIn=mango
   '';
+
+  # Manual-lock screen-off wrapper -------------------------------------------
+  #
+  # Noctalia's `[idle.behavior.screen-off]` only measures seconds since the
+  # last input, so a manual lock during activity (SUPER+L) would never reach
+  # its 660 s threshold and the monitor would stay on. This wrapper makes the
+  # manual path count from the lock moment and maintains a repeatable
+  # blank/wake cycle while the session stays locked:
+  #
+  #   [on] --60 s of silence--> dpms-off --any input--> dpms-on --> [on] ...
+  #
+  # so spurious/noise events only cause a brief light-up followed by an
+  # automatic re-blank, never a permanently lit display. Unlock (or the
+  # 30-minute overall cap) restores the display immediately and exits.
+  #
+  # Session resolution must be explicit: the Mango session is launched through
+  # UWSM, which runs apps in user-scope units outside the logind session
+  # cgroup, so caller-based resolution (`show-session self`, bare
+  # `lock-session`) fails with "Caller does not belong to any known session".
+  # Prefer $XDG_SESSION_ID, else scan the invoking user's sessions for a
+  # graphical type (wayland, then x11, then tty).
+  #
+  # Lock goes through logind deliberately: Noctalia's session-lock integration
+  # (src/dbus/logind/logind_service.cpp) listens for the logind Lock signal to
+  # raise its lock screen, so `lock-session <id>` is the exact trigger its own
+  # integration uses.
+  #
+  # Lock-state polling must NOT use logind's LockedHint: nothing in this stack
+  # ever calls SetLockedHint (verified against noctalia v5 source — no
+  # LockedHint reference exists). The authoritative state is Noctalia's own
+  # IPC: `noctalia msg status` returns JSON with "locked" straight from
+  # m_lockScreen.isActive(). An IPC failure is treated as unlock (safe
+  # direction: display restored).
+  #
+  # Wake-on-input watches EVERY readable raw evdev node (/dev/input/event*;
+  # requires the `input` group) with continuous byte-adequate readers:
+  # evdev rejects short reads with EINVAL, keyboards emit spurious LED/EV_SYN
+  # chunks around lock/blank transitions (one-shot readers died on those),
+  # Bluetooth HID devices have no by-path entry at all, and watching
+  # joystick/consumer-control nodes too is intentional — any input should
+  # wake the display. Watchers require SUSTAINED activity, not a lone
+  # chunk: wireless/BT receivers emit isolated phantom bursts (RF noise,
+  # keepalives, panel-power-down transients) that satisfy any single-read
+  # gate and would light the display with no user present. Each watcher
+  # therefore loops: first 32-byte chunk opens a ~2 s confirmation window,
+  # and only a SECOND chunk within that window (= >= 64 bytes total)
+  # touches the flag; a lone chunk is discarded and the watcher keeps
+  # listening. Human input is a sustained stream and confirms instantly.
+  # Watchers signal via a flag file and are RE-ARMED FRESH at every on/off
+  # transition, so a consumed chunk can never leave a dead watcher behind;
+  # they close fd 9 so an orphaned reader can never hold the flock past
+  # wrapper exit. Blank-time bursts are additionally debounced by waiting
+  # ~3 s after dpms-off before arming. A BT device that reconnects
+  # mid-session keeps its evdev node unless the kernel destroys it; if a
+  # node disappears its watcher dies with its fd (acceptable for this
+  # experiment's scope). If NO device is readable, warn loudly on stderr
+  # and degrade to lock-state-only restoration. A single-instance flock
+  # keeps double keypresses from stacking timers. The unattended idle path
+  # in noctaliaConfig is unchanged and does not run this wrapper.
+  # and does not run this wrapper.
+  noctaliaLockScreenOff = pkgs.writeShellApplication {
+    name = "noctalia-lock-screen-off";
+    runtimeInputs = with pkgs; [
+      coreutils
+      util-linux
+      systemd
+      procps
+      pkgsUnstable.noctalia
+    ];
+    text = ''
+      lock_file="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/noctalia-lock-screen-off.lock"
+      exec 9>"$lock_file" || exit 0
+      flock -n 9 || exit 0
+
+      # Resolve the logind session explicitly — caller attribution ("self")
+      # breaks under UWSM, which runs apps outside the logind session cgroup.
+      resolve_session() {
+        if [ -n "''${XDG_SESSION_ID:-}" ] \
+          && loginctl show-session "$XDG_SESSION_ID" -p Name --value >/dev/null 2>&1; then
+          printf '%s\n' "$XDG_SESSION_ID"
+          return 0
+        fi
+        local uid sid stype
+        uid="$(id -u)"
+        for want in wayland x11 tty; do
+          while read -r sid; do
+            stype="$(loginctl show-session "$sid" -p Type --value 2>/dev/null || true)"
+            if [ "$stype" = "$want" ]; then
+              printf '%s\n' "$sid"
+              return 0
+            fi
+          done < <(loginctl list-sessions --no-legend 2>/dev/null \
+            | awk -v u="$uid" '$2 == u {print $1}')
+        done
+        return 1
+      }
+
+      if ! session_id="$(resolve_session)"; then
+        echo "noctalia-lock-screen-off: cannot resolve the logind graphical session" >&2
+        exit 1
+      fi
+
+      # Authoritative lock state: Noctalia's own IPC (LockedHint is never set
+      # by this stack). Fail early if the shell is unreachable.
+      locked() {
+        noctalia msg status 2>/dev/null | grep -Eq '"locked":[[:space:]]*true'
+      }
+      if ! noctalia msg status >/dev/null 2>&1; then
+        echo "noctalia-lock-screen-off: cannot reach the noctalia IPC (is the shell running?)" >&2
+        exit 1
+      fi
+
+      if ! locked; then
+        loginctl lock-session "$session_id"
+      fi
+
+      runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+      input_flag="$runtime_dir/noctalia-lock-screen-off.input"
+      start="$(date +%s)"
+      deadline=$((start + 1800))
+
+      # Arm fresh watchers over every readable raw evdev node. A watcher
+      # flags activity only on SUSTAINED input: the first 32-byte chunk
+      # merely opens a ~2 s confirmation window, and a SECOND chunk must
+      # arrive within it (>= 64 bytes total) before the flag is touched.
+      # Isolated phantom bursts (RF noise, dongle keepalives, blank-
+      # transient events) fail stage two and are discarded without ever
+      # leaving the armed state; human input streams confirm instantly.
+      watcher_pids=""
+      arm_watchers() {
+        rm -f "$input_flag"
+        watcher_pids=""
+        watched=0
+        for dev in /dev/input/event*; do
+          if [ -c "$dev" ] && [ -r "$dev" ]; then
+            (
+              while :; do
+                # Stage 1: wait for a first event chunk (bounded).
+                if ! timeout 1800 dd if="$dev" bs=32 count=1 2>/dev/null >/dev/null; then
+                  break
+                fi
+                # Stage 2: one more chunk within ~2 s = sustained activity.
+                if timeout 2 dd if="$dev" bs=32 count=1 2>/dev/null >/dev/null; then
+                  : > "$input_flag"
+                  break
+                fi
+                # Phantom: lone chunk — discard and keep listening.
+              done
+            ) 9>&- &
+            watcher_pids="$watcher_pids $!"
+            watched=$((watched + 1))
+          fi
+        done
+        # Watchers close fd 9 (9>&-) so an orphaned reader can never keep
+        # the flock held past this wrapper's exit.
+        if [ "$watched" -eq 0 ]; then
+          echo "noctalia-lock-screen-off: no readable input devices - is your user in the input group? relogin required" >&2
+        fi
+      }
+
+      kill_watchers() {
+        # Kill the whole watcher tree: the subshell's children are
+        # `timeout`/`head`/`wc`, and `cat` is a GRANDCHILD under timeout.
+        # Killing only direct children leaves a zombie cat holding the
+        # device fd, silently eating real input into a dead pipe.
+        for wpid in $watcher_pids; do
+          for kid in $(pgrep -P "$wpid" 2>/dev/null || true); do
+            pkill -P "$kid" >/dev/null 2>&1 || true
+            kill "$kid" 2>/dev/null || true
+          done
+          kill "$wpid" 2>/dev/null || true
+        done
+      }
+      trap kill_watchers EXIT
+
+      # State machine while locked (bounded by the overall cap):
+      #   [on] --60 s of silence--> dpms-off --any input--> dpms-on --> [on]
+      # Unlock (or an unreachable IPC, treated as unlock) exits with the
+      # display restored. Watchers are re-armed FRESH at every transition,
+      # so a consumed event chunk can never leave a dead watcher behind.
+      while :; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+          noctalia msg dpms-on >/dev/null 2>&1 || true
+          exit 0
+        fi
+
+        # ON phase: display lit; 60 s without input blanks it, any input
+        # restarts the window with freshly armed watchers.
+        kill_watchers
+        arm_watchers
+        i=0
+        quiet=1
+        while [ "$i" -lt 60 ]; do
+          if [ -e "$input_flag" ]; then
+            quiet=0
+            break
+          fi
+          locked || { noctalia msg dpms-on >/dev/null 2>&1 || true; exit 0; }
+          sleep 1
+          i=$((i + 1))
+        done
+        [ "$quiet" -eq 0 ] && continue
+
+        # OFF phase: debounce blank-time bursts (nothing armed for ~3 s),
+        # then wait for real input or unlock until the overall cap.
+        kill_watchers
+        noctalia msg dpms-off || echo "noctalia-lock-screen-off: dpms-off failed"
+        sleep 3
+        arm_watchers
+        while :; do
+          if [ -e "$input_flag" ]; then
+            noctalia msg dpms-on || echo "noctalia-lock-screen-off: dpms-on failed"
+            break
+          fi
+          locked || { noctalia msg dpms-on >/dev/null 2>&1 || true; exit 0; }
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            noctalia msg dpms-on >/dev/null 2>&1 || true
+            exit 0
+          fi
+          sleep 1
+        done
+        # Woke: loop back to the ON phase (fresh 60 s silence window).
+      done
+    '';
+  };
 
   theme = import ../theme.nix;
   c = theme.colors;
@@ -191,7 +417,11 @@ let
     bind=SUPER,v,spawn,noctalia msg panel-toggle clipboard
     bind=SUPER+SHIFT,s,spawn,noctalia msg screenshot-region
     bind=SUPER,Escape,spawn,noctalia msg panel-toggle session
-    bind=SUPER,l,spawn,noctalia msg session lock
+    # Manual lock: wrapper instead of `noctalia msg session lock` so the
+    # monitor powers off ~60 s after the lock itself (not after 660 s of
+    # compositor idle — see noctaliaLockScreenOff above). The unattended
+    # idle path stays in Noctalia's [idle.behavior.*] below.
+    bind=SUPER,l,spawn,noctalia-lock-screen-off
     # Windows
     bind=SUPER,q,killclient,
     bind=SUPER,m,quit
@@ -292,10 +522,17 @@ let
     [wallpaper.default]
     path = "${wallpaper}"
 
-    # Idle lock at 600 s, mirroring the stable hypridle listener.
+    # Idle behaviors mirroring the stable hypridle listeners: lock at 600 s,
+    # then power the monitor off ~1 min later (DPMS off; input wakes it back
+    # to the lock screen).
     [idle.behavior.lock]
     timeout = 600
     action = "lock"
+    enabled = true
+
+    [idle.behavior.screen-off]
+    timeout = 660
+    action = "screen_off"
     enabled = true
   '';
 
@@ -375,6 +612,9 @@ in
     systemd.user.services = lib.genAttrs fallbackServices (_: {
       Service.ExecCondition = fallbackServiceCondition;
     });
+
+    # Manual-lock screen-off wrapper (bound to SUPER+L in mangoConfig).
+    home.packages = [ noctaliaLockScreenOff ];
 
     xdg.configFile."mango/config.conf".text = mangoConfig;
 

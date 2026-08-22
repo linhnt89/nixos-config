@@ -62,6 +62,11 @@
     extraGroups = [
       "networkmanager"
       "wheel"
+      # Read access to /dev/input/event* so the Mango session's
+      # noctalia-lock-screen-off wrapper can watch raw keyboard/mouse
+      # events to wake the display after its manual-lock dpms-off
+      # (home/modules/experiment.nix).
+      "input"
     ];
 
     shell = pkgs.zsh;
