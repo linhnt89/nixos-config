@@ -115,7 +115,15 @@ let
   # never fire. The authoritative state is Noctalia's own IPC:
   # `noctalia msg status` returns JSON with "locked" straight from
   # m_lockScreen.isActive(). Poll that every 2 s; a 30-minute cap restores the
-  # display even if the IPC dies while locked. A single-instance flock keeps
+  # display even if the IPC dies while locked.
+  #
+  # Wake-on-input: on Mango, outputs disabled via the IPC dpms-off are not
+  # re-enabled by input alone (Noctalia only self-restores for its own idle-
+  # driven screen_off, whose resume action rides the compositor's
+  # wlr_idle_notify_v1 activity events). The wrapper therefore watches raw
+  # /dev/input keyboard/mouse devices itself (requires the `input` group) and
+  # fires dpms-on at the first event byte. The unlock poll stays as a second
+  # restoration path and the cap bounds everything. A single-instance flock keeps
   # double keypresses from stacking timers. The unattended idle path in
   # noctaliaConfig is unchanged and does not run this wrapper.
   noctaliaLockScreenOff = pkgs.writeShellApplication {
@@ -179,7 +187,33 @@ let
       sleep 60
       if locked; then
         noctalia msg dpms-off || echo "noctalia-lock-screen-off: dpms-off failed"
+      else
+        exit 0
       fi
+
+      # Wake on input: watch raw keyboard/mouse event devices (needs the
+      # `input` group); the first readable byte is user activity -> wake
+      # immediately instead of waiting for a blind unlock.
+      watcher_pids=""
+      for dev in /dev/input/by-path/*-event-kbd /dev/input/by-path/*-event-mouse; do
+        if [ -c "$dev" ] && [ -r "$dev" ]; then
+          (
+            # Bounded read: an event struct is many bytes but one readable
+            # byte already proves activity. On timeout the reader exits;
+            # the main script kills us when done either way.
+            if IFS= read -r -n 1 -t 1900 REPLY < "$dev"; then
+              noctalia msg dpms-on >/dev/null 2>&1 || true
+            fi
+          ) &
+          watcher_pids="$watcher_pids $!"
+        fi
+      done
+      kill_watchers() {
+        for wpid in $watcher_pids; do
+          kill "$wpid" 2>/dev/null || true
+        done
+      }
+      trap kill_watchers EXIT
 
       # Restore the display when the session unlocks (poll Noctalia IPC every
       # 2 s), with a 30-minute safety cap in case the IPC dies while locked.
