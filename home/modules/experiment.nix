@@ -122,7 +122,13 @@ let
   # driven screen_off, whose resume action rides the compositor's
   # wlr_idle_notify_v1 activity events). The wrapper therefore watches raw
   # /dev/input keyboard/mouse devices itself (requires the `input` group) and
-  # fires dpms-on at the first event byte. The unlock poll stays as a second
+  # fires dpms-on at the first event. Readers must request a whole
+  # struct-input_event per read (>= 24 bytes on x86_64): the evdev driver
+  # rejects shorter reads with EINVAL, and long-lived readers (cat) never
+  # exit — so each watcher is `timeout 1800 dd bs=32 count=1`, which wakes
+  # exactly once on the first event chunk. If NO device is readable (input
+  # group missing / stale login session), warn loudly on stderr and degrade
+  # to the unlock-poll restoration path. The unlock poll stays as a second
   # restoration path and the cap bounds everything. A single-instance flock keeps
   # double keypresses from stacking timers. The unattended idle path in
   # noctaliaConfig is unchanged and does not run this wrapper.
@@ -132,6 +138,7 @@ let
       coreutils
       util-linux
       systemd
+      procps
       pkgsUnstable.noctalia
     ];
     text = ''
@@ -192,24 +199,35 @@ let
       fi
 
       # Wake on input: watch raw keyboard/mouse event devices (needs the
-      # `input` group); the first readable byte is user activity -> wake
-      # immediately instead of waiting for a blind unlock.
+      # `input` group). Each watcher performs ONE byte-adequate read
+      # (bs=32 >= sizeof(struct input_event); evdev rejects short reads)
+      # and succeeds on the first event chunk -> wake immediately.
       watcher_pids=""
+      watched=0
       for dev in /dev/input/by-path/*-event-kbd /dev/input/by-path/*-event-mouse; do
         if [ -c "$dev" ] && [ -r "$dev" ]; then
           (
-            # Bounded read: an event struct is many bytes but one readable
-            # byte already proves activity. On timeout the reader exits;
-            # the main script kills us when done either way.
-            if IFS= read -r -n 1 -t 1900 REPLY < "$dev"; then
+            # Bounded by `timeout`; on expiry dd dies non-zero and the
+            # watcher exits without waking (the cap path handles it).
+            if timeout 1800 dd if="$dev" bs=32 count=1 2>/dev/null >/dev/null; then
               noctalia msg dpms-on >/dev/null 2>&1 || true
             fi
-          ) &
+          ) 9>&- &
           watcher_pids="$watcher_pids $!"
+          watched=$((watched + 1))
         fi
       done
+      # Watchers close fd 9 (9>&-) so an orphaned `timeout dd` can never
+      # keep the flock held past this wrapper's exit and block the next
+      # SUPER+L invocation.
+      if [ "$watched" -eq 0 ]; then
+        echo "noctalia-lock-screen-off: no readable input devices - is your user in the input group? relogin required" >&2
+      fi
       kill_watchers() {
+        # pkill first so `timeout` forwards the signal to its dd child;
+        # plain kill would orphan the reader until its own timeout.
         for wpid in $watcher_pids; do
+          pkill -P "$wpid" >/dev/null 2>&1 || true
           kill "$wpid" 2>/dev/null || true
         done
       }
