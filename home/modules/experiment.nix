@@ -102,17 +102,22 @@ let
   # `lock-session`) fails with "Caller does not belong to any known session".
   # Prefer $XDG_SESSION_ID, else scan the invoking user's sessions for a
   # graphical type (wayland, then x11, then tty). The explicit id is used for
-  # BOTH the lock and every LockedHint poll.
+  # the lock call.
   #
   # Lock goes through logind deliberately: Noctalia's session-lock integration
   # (src/dbus/logind/logind_service.cpp) listens for the logind Lock signal to
   # raise its lock screen, so `lock-session <id>` is the exact trigger its own
-  # integration uses — and it sets LockedHint for our still-locked polls. After
-  # the 60 s wait the monitor powers off only if still locked, then the wrapper
-  # polls until unlock and forces the display back on (DPMS wake on input alone
-  # is not reliable on Mango). A single-instance flock keeps double keypresses
-  # from stacking timers. The unattended idle path in noctaliaConfig is
-  # unchanged and does not run this wrapper.
+  # integration uses.
+  #
+  # Lock-state polling must NOT use logind's LockedHint: nothing in this stack
+  # ever calls SetLockedHint (verified against noctalia v5 source — no
+  # LockedHint reference exists), so it stays "no" forever and dpms-off would
+  # never fire. The authoritative state is Noctalia's own IPC:
+  # `noctalia msg status` returns JSON with "locked" straight from
+  # m_lockScreen.isActive(). Poll that every 2 s; a 30-minute cap restores the
+  # display even if the IPC dies while locked. A single-instance flock keeps
+  # double keypresses from stacking timers. The unattended idle path in
+  # noctaliaConfig is unchanged and does not run this wrapper.
   noctaliaLockScreenOff = pkgs.writeShellApplication {
     name = "noctalia-lock-screen-off";
     runtimeInputs = with pkgs; [
@@ -154,9 +159,15 @@ let
         exit 1
       fi
 
+      # Authoritative lock state: Noctalia's own IPC (LockedHint is never set
+      # by this stack). Fail early if the shell is unreachable.
       locked() {
-        [ "$(loginctl show-session "$session_id" -p LockedHint --value)" = "yes" ]
+        noctalia msg status 2>/dev/null | grep -Eq '"locked":[[:space:]]*true'
       }
+      if ! noctalia msg status >/dev/null 2>&1; then
+        echo "noctalia-lock-screen-off: cannot reach the noctalia IPC (is the shell running?)" >&2
+        exit 1
+      fi
 
       if ! locked; then
         loginctl lock-session "$session_id"
@@ -170,9 +181,12 @@ let
         noctalia msg dpms-off || echo "noctalia-lock-screen-off: dpms-off failed"
       fi
 
-      # Restore the display as soon as the session unlocks.
-      while locked; do
+      # Restore the display when the session unlocks (poll Noctalia IPC every
+      # 2 s), with a 30-minute safety cap in case the IPC dies while locked.
+      i=0
+      while [ "$i" -lt 900 ] && locked; do
         sleep 2
+        i=$((i + 1))
       done
       noctalia msg dpms-on || echo "noctalia-lock-screen-off: dpms-on failed"
     '';
