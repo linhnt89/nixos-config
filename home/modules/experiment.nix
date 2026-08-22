@@ -128,21 +128,25 @@ let
   # chunks around lock/blank transitions (one-shot readers died on those),
   # Bluetooth HID devices have no by-path entry at all, and watching
   # joystick/consumer-control nodes too is intentional — any input should
-  # wake the display. Each watcher pipes a bounded `cat` into `head -c 32`
-  # and flags activity only when a full 32-byte chunk arrived (`wc -c`):
-  # GNU head -c exits 0 even on early EOF, so the pipeline status cannot
-  # distinguish activity from timeout (pipefail is disabled locally so
-  # cat's SIGPIPE death cannot poison anything either). Watchers signal via
-  # a flag file and are RE-ARMED FRESH at every on/off transition, so a
-  # consumed chunk can never leave a dead watcher behind; they close fd 9
-  # so an orphaned reader can never hold the flock past wrapper exit. Blank-
-  # time LED/sync bursts are debounced by waiting ~2 s after dpms-off before
-  # arming. A BT device that reconnects mid-session keeps its evdev node
-  # unless the kernel destroys it; if a node disappears its watcher dies
-  # with its fd (acceptable for this experiment's scope). If NO device is
-  # readable, warn loudly on stderr and degrade to lock-state-only
-  # restoration. A single-instance flock keeps double keypresses from
-  # stacking timers. The unattended idle path in noctaliaConfig is unchanged
+  # wake the display. Watchers require SUSTAINED activity, not a lone
+  # chunk: wireless/BT receivers emit isolated phantom bursts (RF noise,
+  # keepalives, panel-power-down transients) that satisfy any single-read
+  # gate and would light the display with no user present. Each watcher
+  # therefore loops: first 32-byte chunk opens a ~2 s confirmation window,
+  # and only a SECOND chunk within that window (= >= 64 bytes total)
+  # touches the flag; a lone chunk is discarded and the watcher keeps
+  # listening. Human input is a sustained stream and confirms instantly.
+  # Watchers signal via a flag file and are RE-ARMED FRESH at every on/off
+  # transition, so a consumed chunk can never leave a dead watcher behind;
+  # they close fd 9 so an orphaned reader can never hold the flock past
+  # wrapper exit. Blank-time bursts are additionally debounced by waiting
+  # ~3 s after dpms-off before arming. A BT device that reconnects
+  # mid-session keeps its evdev node unless the kernel destroys it; if a
+  # node disappears its watcher dies with its fd (acceptable for this
+  # experiment's scope). If NO device is readable, warn loudly on stderr
+  # and degrade to lock-state-only restoration. A single-instance flock
+  # keeps double keypresses from stacking timers. The unattended idle path
+  # in noctaliaConfig is unchanged and does not run this wrapper.
   # and does not run this wrapper.
   noctaliaLockScreenOff = pkgs.writeShellApplication {
     name = "noctalia-lock-screen-off";
@@ -206,11 +210,12 @@ let
       deadline=$((start + 1800))
 
       # Arm fresh watchers over every readable raw evdev node. A watcher
-      # signals activity by touching the flag file once a FULL 32-byte
-      # chunk arrives (wc -c gate: GNU head -c exits 0 even on early EOF,
-      # so pipeline status cannot distinguish activity from timeout;
-      # pipefail is disabled locally so cat's SIGPIPE death cannot poison
-      # the result either).
+      # flags activity only on SUSTAINED input: the first 32-byte chunk
+      # merely opens a ~2 s confirmation window, and a SECOND chunk must
+      # arrive within it (>= 64 bytes total) before the flag is touched.
+      # Isolated phantom bursts (RF noise, dongle keepalives, blank-
+      # transient events) fail stage two and are discarded without ever
+      # leaving the armed state; human input streams confirm instantly.
       watcher_pids=""
       arm_watchers() {
         rm -f "$input_flag"
@@ -219,11 +224,18 @@ let
         for dev in /dev/input/event*; do
           if [ -c "$dev" ] && [ -r "$dev" ]; then
             (
-              set +o pipefail
-              bytes="$(timeout 1800 cat "$dev" 2>/dev/null | head -c 32 | wc -c)"
-              if [ "$bytes" -eq 32 ]; then
-                : > "$input_flag"
-              fi
+              while :; do
+                # Stage 1: wait for a first event chunk (bounded).
+                if ! timeout 1800 dd if="$dev" bs=32 count=1 2>/dev/null >/dev/null; then
+                  break
+                fi
+                # Stage 2: one more chunk within ~2 s = sustained activity.
+                if timeout 2 dd if="$dev" bs=32 count=1 2>/dev/null >/dev/null; then
+                  : > "$input_flag"
+                  break
+                fi
+                # Phantom: lone chunk — discard and keep listening.
+              done
             ) 9>&- &
             watcher_pids="$watcher_pids $!"
             watched=$((watched + 1))
@@ -279,11 +291,11 @@ let
         done
         [ "$quiet" -eq 0 ] && continue
 
-        # OFF phase: debounce blank-time bursts (nothing armed for ~2 s),
+        # OFF phase: debounce blank-time bursts (nothing armed for ~3 s),
         # then wait for real input or unlock until the overall cap.
         kill_watchers
         noctalia msg dpms-off || echo "noctalia-lock-screen-off: dpms-off failed"
-        sleep 2
+        sleep 3
         arm_watchers
         while :; do
           if [ -e "$input_flag" ]; then
