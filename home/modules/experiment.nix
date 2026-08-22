@@ -117,19 +117,21 @@ let
   # m_lockScreen.isActive(). Poll that every 2 s; a 30-minute cap restores the
   # display even if the IPC dies while locked.
   #
-  # Wake-on-input: on Mango, outputs disabled via the IPC dpms-off are not
-  # re-enabled by input alone (Noctalia only self-restores for its own idle-
   # driven screen_off, whose resume action rides the compositor's
   # wlr_idle_notify_v1 activity events). The wrapper therefore watches raw
-  # /dev/input keyboard/mouse devices itself (requires the `input` group) and
-  # fires dpms-on at the first event. Readers must request a whole
-  # struct-input_event per read (>= 24 bytes on x86_64): the evdev driver
-  # rejects shorter reads with EINVAL, and long-lived readers (cat) never
-  # exit — so each watcher is `timeout 1800 dd bs=32 count=1`, which wakes
-  # exactly once on the first event chunk. If NO device is readable (input
-  # group missing / stale login session), warn loudly on stderr and degrade
-  # to the unlock-poll restoration path. The unlock poll stays as a second
-  # restoration path and the cap bounds everything. A single-instance flock keeps
+  # /dev/input keyboard/mouse devices itself (requires the `input` group).
+  # Readers must be CONTINUOUS and byte-adequate: evdev rejects short reads
+  # with EINVAL, AND keyboards emit spurious event chunks (LED/EV_SYN
+  # updates) around lock time — a one-shot reader dies on those before the
+  # user ever touches a key (observed: mouse woke, keyboard did not). Each
+  # watcher pipes a bounded `cat` into `head -c 32` and fires dpms-on only
+  # when head actually collected 32 bytes (wc -c): real activity delivers a
+  # full chunk; a timed-out cat leaves head short. Note GNU head -c exits 0
+  # even on early EOF, so the PIPELINE STATUS cannot distinguish activity
+  # from timeout (pipefail is disabled locally regardless, so cat's SIGPIPE
+  # death cannot poison the result) — hence the explicit byte count.
+  # If NO device is readable (input group missing / stale login session),
+  # warn loudly on stderr and degrade to the unlock-poll restoration path. A single-instance flock keeps
   # double keypresses from stacking timers. The unattended idle path in
   # noctaliaConfig is unchanged and does not run this wrapper.
   noctaliaLockScreenOff = pkgs.writeShellApplication {
@@ -199,17 +201,17 @@ let
       fi
 
       # Wake on input: watch raw keyboard/mouse event devices (needs the
-      # `input` group). Each watcher performs ONE byte-adequate read
-      # (bs=32 >= sizeof(struct input_event); evdev rejects short reads)
-      # and succeeds on the first event chunk -> wake immediately.
+      # `input` group) with CONTINUOUS readers — see the rationale above.
       watcher_pids=""
       watched=0
       for dev in /dev/input/by-path/*-event-kbd /dev/input/by-path/*-event-mouse; do
         if [ -c "$dev" ] && [ -r "$dev" ]; then
           (
-            # Bounded by `timeout`; on expiry dd dies non-zero and the
-            # watcher exits without waking (the cap path handles it).
-            if timeout 1800 dd if="$dev" bs=32 count=1 2>/dev/null >/dev/null; then
+            # Fire only on a FULL 32-byte chunk: wc -c must report 32.
+            # A timed-out cat leaves head short -> no spurious wake.
+            set +o pipefail
+            bytes="$(timeout 1800 cat "$dev" 2>/dev/null | head -c 32 | wc -c)"
+            if [ "$bytes" -eq 32 ]; then
               noctalia msg dpms-on >/dev/null 2>&1 || true
             fi
           ) 9>&- &
