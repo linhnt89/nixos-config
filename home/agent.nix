@@ -73,9 +73,17 @@
   # the agent account pushes over HTTPS through gh's credential helper.
   #
 
-  programs.git.settings.user = {
-    name = "Linh Nguyen";
-    email = "linhtramnguyen@gmail.com";
+  programs.git.settings = {
+    user = {
+      name = "Linh Nguyen";
+      email = "linhtramnguyen@gmail.com";
+    };
+
+    # GitHub over HTTPS via gh's OAuth token. Declared here instead of
+    # the imperative 'gh auth setup-git', which cannot edit this
+    # HM-generated file (read-only store symlink).
+    credential."https://github.com".helper =
+      "${pkgs.gh}/bin/gh auth git-credential";
   };
 
   #
