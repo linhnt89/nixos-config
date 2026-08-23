@@ -47,6 +47,8 @@
       # (PC-local key and Haven key) once they are generated for this
       # account. Do NOT reuse linhnt's personal keys, and never commit
       # private key material.
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICPKBgC2mt7T2JDGIOhfLdW73V/SY3SANucXkboo2GrB"
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJIU4Q7fmcxkb9fPzxhXI4laSpcklmjvdlQeiyNgdPu9 metacube-agent"
     ];
   };
 
