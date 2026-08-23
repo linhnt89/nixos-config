@@ -106,7 +106,9 @@
         ForwardAgent = false;
 
         # The agent account has no kitty terminfo yet.
-        SetEnv = "TERM=xterm-256color";
+        SetEnv = {
+          TERM = "xterm-256color";
+        };
       };
     };
   };
