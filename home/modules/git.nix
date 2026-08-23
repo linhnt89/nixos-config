@@ -104,6 +104,9 @@
         IdentityFile = "~/.ssh/id_ed25519_agent_local";
         IdentitiesOnly = true;
         ForwardAgent = false;
+
+        # The agent account has no kitty terminfo yet.
+        SetEnv = "TERM=xterm-256color";
       };
     };
   };
