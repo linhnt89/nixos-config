@@ -96,6 +96,15 @@
 
         AddKeysToAgent = "yes";
       };
+
+      "agent-local" = {
+        HostName = "127.0.0.1";
+        User = "agent";
+
+        IdentityFile = "~/.ssh/id_ed25519_agent_local";
+        IdentitiesOnly = true;
+        ForwardAgent = false;
+      };
     };
   };
 }
