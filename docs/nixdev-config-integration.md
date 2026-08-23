@@ -41,25 +41,31 @@ home-manager.extraSpecialArgs.treehousePkg =
 ```
 
 The optional pinned `herdr` binary is a per-machine opt-in
-(`nixdev.firstmate.enableHerdr = true;`), enabled in `home/linhnt.nix`
-because MetaCube's configured Firstmate backend is Herdr. The refactor's
+(`nixdev.firstmate.enableHerdr = true;`), enabled in `home/agent.nix`
+because MetaCube's configured Firstmate backend is Herdr. The shared
+Firstmate toolchain, Herdr, Pi (via the opt-in `assistant` module),
+Claude Code, and the FM Dependabot sweep timer all live on the dedicated
+restricted `agent` account (`modules/nixos/agent-runtime.nix` +
+`home/agent.nix`), never on the personal desktop account. The refactor's
 ownership and timer boundaries are locked in by
 `scripts/test-ownership.sh` (run by `scripts/check.sh`).
 
 ## What stays local (MetaCube-personal)
 
-`home/linhnt.nix` and `home/modules/*` are **local adapters** carrying
-everything nixdev-config deliberately does not: git identity and personal
-workflow settings, SSH host identity + the UWSM SSH-agent environment,
-zsh history/autosuggestion/syntax-highlighting preferences, fzf widget
-behavior, delta UI options, the eza "keep `ls` untouched" override, gh
-client behavior (SSH protocol, no HTTPS credential helper), lazygit,
+`home/linhnt.nix`, `home/agent.nix`, and `home/modules/*` are **local
+adapters** carrying everything nixdev-config deliberately does not: git
+identity and personal workflow settings, SSH host identity + the UWSM
+SSH-agent environment, zsh history/autosuggestion/syntax-highlighting
+preferences, fzf widget behavior, delta UI options, the eza "keep `ls`
+untouched" override, gh client behavior per account (SSH protocol for
+the desktop user, HTTPS + credential helper for `agent`), lazygit,
 appearance, apps, services (swaync, hyprlock/hypridle/hyprpaper,
 Bluetooth/Wi-Fi/power quick settings), Waybar, Mango/Hyprland/Noctalia
 (experiment), Pi seed/defaults, the user-level treehouse pool default
 (`home/modules/dev.nix`), and the opt-in FM Dependabot sweep timer
 (`home/modules/firstmate-timer.nix`, MetaCube-only). `pi-coding-agent`
-stays on this repo's `nixpkgs-unstable` lane.
+stays on this repo's `nixpkgs-unstable` lane — enabled only for the
+`agent` account via `nixdev.assistant`.
 
 Adopted portable defaults (visible deltas from before the integration):
 bat's theme becomes `TwoDark`, eza shows git status, starship/fzf/direnv

@@ -19,14 +19,20 @@ The other three (`models.json`, `AGENTS.md`,
 
 `home/modules/pi.nix` therefore uses two mechanisms:
 
-1. **Read-only declarative links** (out-of-store symlinks from the
-   canonical checkout) for `models.json`, `AGENTS.md`, and
-   `openai-server-compaction.json`.
+1. **Read-only declarative links** (immutable Nix store paths built
+   from the tracked `home/pi/` files) for `models.json`, `AGENTS.md`,
+   and `openai-server-compaction.json`.
 2. **Seed-once runtime files** for `settings.json` and
    `web-search.json`: a Home Manager activation script copies the
-   tracked defaults from `home/pi/` into the runtime locations **only
-   when the file does not exist yet**. Afterwards Pi owns them and the
-   tracked clone is never written at runtime.
+   tracked defaults from the Nix store (originating in `home/pi/`)
+   into the runtime locations **only when the file does not exist
+   yet**. Afterwards Pi owns them and the tracked clone is never
+   written at runtime.
+
+All sources are user-independent store paths: no checkout location or
+HOME is assumed, so the same module serves both the desktop account and
+the dedicated restricted `agent` account (`modules/nixos/
+agent-runtime.nix`).
 
 The tracked `home/pi/settings.json` is deliberately minimal: essential
 model and package defaults only (`defaultProvider`, `defaultModel`,

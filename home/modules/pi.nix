@@ -7,9 +7,10 @@ let
   # Two kinds of files are involved:
   #
   # 1. Read-only at runtime (models.json, AGENTS.md,
-  #    openai-server-compaction.json): kept as out-of-store symlinks from
-  #    the canonical checkout. Pi and its extensions only read these;
-  #    the tracked clone is never written.
+  #    openai-server-compaction.json): referenced directly as flake/store
+  #    sources — Nix copies them into the store and Home Manager links
+  #    the runtime locations to the immutable store paths. Pi and its
+  #    extensions only read these; the tracked clone is never written.
   #
   # 2. Runtime-writable (settings.json, web-search.json): Pi rewrites
   #    settings.json on every /settings change, /model selection, package
@@ -24,9 +25,15 @@ let
   # declarative defaults / first-run seeds. Re-apply them deliberately
   # with `pi-apply-defaults` (or `nixos-rebuild switch` on a fresh HOME).
   #
+  # All sources are user-independent store paths: no module here assumes
+  # a particular checkout location or HOME, so the same wiring serves
+  # both the desktop account and the dedicated `agent` account.
+  #
 
-  piConfigDir =
-    "${config.home.homeDirectory}/nixos-config/home/pi";
+  # Tracked Pi defaults as store sources (relative to this module:
+  # home/pi/).
+
+  trackedDir = ../pi;
 
   # Runtime-owned agent directory (real files Pi may rewrite at will).
   runtimeAgentDir =
@@ -34,20 +41,17 @@ let
 in
 {
   #
-  # Read-only at runtime: declarative out-of-store symlinks
+  # Read-only at runtime: declarative store-path links
   #
 
   home.file.".pi/agent/models.json".source =
-    config.lib.file.mkOutOfStoreSymlink
-      "${piConfigDir}/models.json";
+    "${trackedDir}/models.json";
 
   home.file.".pi/agent/AGENTS.md".source =
-    config.lib.file.mkOutOfStoreSymlink
-      "${piConfigDir}/AGENTS.md";
+    "${trackedDir}/AGENTS.md";
 
   home.file.".pi/agent/openai-server-compaction.json".source =
-    config.lib.file.mkOutOfStoreSymlink
-      "${piConfigDir}/openai-server-compaction.json";
+    "${trackedDir}/openai-server-compaction.json";
 
   #
   # Runtime-writable: seed once, then let Pi own the file
@@ -69,8 +73,8 @@ in
           _i "Keeping existing $dst"
         fi
       }
-      seed "${piConfigDir}/settings.json" "${runtimeAgentDir}/settings.json"
-      seed "${piConfigDir}/web-search.json" "${config.xdg.configHome}/pi/web-search.json"
+      seed "${trackedDir}/settings.json" "${runtimeAgentDir}/settings.json"
+      seed "${trackedDir}/web-search.json" "${config.xdg.configHome}/pi/web-search.json"
     '';
 
   #
@@ -91,7 +95,8 @@ in
       #   pi-apply-defaults           copy tracked defaults to runtime files
       #   pi-apply-defaults --dry-run show what would be copied
 
-      tracked_dir="''${HOME}/nixos-config/home/pi"
+      tracked_settings="${trackedDir}/settings.json"
+      tracked_web="${trackedDir}/web-search.json"
       runtime_settings="''${HOME}/.pi/agent/settings.json"
       runtime_web="''${XDG_CONFIG_HOME:-''${HOME}/.config}/pi/web-search.json"
 
@@ -123,8 +128,8 @@ in
         fi
       }
 
-      apply "$tracked_dir/settings.json" "$runtime_settings"
-      apply "$tracked_dir/web-search.json" "$runtime_web"
+      apply "$tracked_settings" "$runtime_settings"
+      apply "$tracked_web" "$runtime_web"
     '')
   ];
 

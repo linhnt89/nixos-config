@@ -49,7 +49,7 @@ fi
 echo '== shared-Firstmate ownership boundary'
 
 flake_nix="$repo_root/flake.nix"
-linhnt_nix="$repo_root/home/linhnt.nix"
+agent_nix="$repo_root/home/agent.nix"
 dev_nix="$repo_root/home/modules/dev.nix"
 timer_module="$repo_root/home/modules/firstmate-timer.nix"
 
@@ -63,12 +63,12 @@ else
   fail "flake.nix still declares a toolchain input (treehouse/herdr/noMistakes)"
 fi
 
-if grep -Fq 'nixdev-config.homeManagerModules.firstmateTools' "$flake_nix" &&
+if grep -Fq 'nixdev-config.homeManagerModules.firstmate' "$flake_nix" &&
   grep -Fq 'treehousePkg =' "$flake_nix" &&
   grep -Fq 'nixdev-config.packages.${system}.treehouse' "$flake_nix"; then
-  pass "flake.nix consumes firstmateTools with the exported treehouse package"
+  pass "flake.nix consumes the firstmate role profile with the exported treehouse package"
 else
-  fail "flake.nix is not wired to nixdev-config's firstmateTools + treehousePkg"
+  fail "flake.nix is not wired to nixdev-config's firstmate modules + treehousePkg"
 fi
 
 for gone in \
@@ -84,19 +84,21 @@ for gone in \
   fi
 done
 
-if grep -Fq 'enableHerdr = true' "$linhnt_nix"; then
-  pass "home/linhnt.nix enables the pinned herdr (MetaCube Herdr backend)"
+if grep -Fq 'enableHerdr = true' "$agent_nix" &&
+  ! grep -Fq 'enableHerdr' "$repo_root/home/linhnt.nix"; then
+  pass "home/agent.nix enables the pinned herdr (MetaCube Herdr backend, agent account only)"
 else
-  fail "home/linhnt.nix does not enable nixdev.firstmate.enableHerdr"
+  fail "herdr enablement must live in home/agent.nix only (nixdev.firstmate.enableHerdr)"
 fi
 
 echo '== FM Dependabot sweep timer'
 
 if [ -f "$timer_module" ] &&
-  grep -Fq 'metacube.firstmate.fmDependabotSweep.enable' "$linhnt_nix"; then
-  pass "timer module exists and MetaCube opts in"
+  grep -Fq 'metacube.firstmate.fmDependabotSweep.enable' "$agent_nix" &&
+  ! grep -Fq 'fmDependabotSweep' "$repo_root/home/linhnt.nix"; then
+  pass "timer module exists and MetaCube opts in (agent account only)"
 else
-  fail "timer module or MetaCube opt-in missing"
+  fail "timer module or MetaCube opt-in missing (must be home/agent.nix only)"
 fi
 
 if grep -Fq 'firstmateHome = "%h/firstmate"' "$timer_module" &&
