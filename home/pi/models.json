@@ -12,6 +12,46 @@
           "contextWindow": 272000
         }
       }
+    },
+
+    "agnes": {
+      "baseUrl": "https://apihub.agnes-ai.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "agnes-2.5-flash",
+          "name": "Agnes 2.5 Flash",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 512000,
+          "maxTokens": 65536,
+          "cost": {
+            "input": 0.03,
+            "output": 0.15
+          },
+          "compat": {
+            "thinkingFormat": "qwen-chat-template"
+          }
+        }
+      ]
+    },
+
+    "agnes-plan": {
+      "baseUrl": "https://apihub.agnes-ai.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "agnes-2.5-flash",
+          "name": "Agnes 2.5 Flash (Plan)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 512000,
+          "maxTokens": 65536,
+          "compat": {
+            "thinkingFormat": "qwen-chat-template"
+          }
+        }
+      ]
     }
   }
 }
