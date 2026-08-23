@@ -14,9 +14,11 @@
       }
     },
 
-    "agnes": {
+    "agnes-direct": {
+      "name": "Agnes AI (direct)",
       "baseUrl": "https://apihub.agnes-ai.com/v1",
       "api": "openai-completions",
+      "apiKey": "$AGNES_API_KEY",
       "models": [
         {
           "id": "agnes-2.5-flash",
@@ -31,24 +33,6 @@
             "cacheRead": 0,
             "cacheWrite": 0
           },
-          "compat": {
-            "thinkingFormat": "qwen-chat-template"
-          }
-        }
-      ]
-    },
-
-    "agnes-plan": {
-      "baseUrl": "https://apihub.agnes-ai.com/v1",
-      "api": "openai-completions",
-      "models": [
-        {
-          "id": "agnes-2.5-flash",
-          "name": "Agnes 2.5 Flash (Plan)",
-          "reasoning": true,
-          "input": ["text", "image"],
-          "contextWindow": 512000,
-          "maxTokens": 65536,
           "compat": {
             "thinkingFormat": "qwen-chat-template"
           }
