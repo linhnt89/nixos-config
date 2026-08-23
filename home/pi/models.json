@@ -27,7 +27,9 @@
           "maxTokens": 65536,
           "cost": {
             "input": 0.03,
-            "output": 0.15
+            "output": 0.15,
+            "cacheRead": 0,
+            "cacheWrite": 0
           },
           "compat": {
             "thinkingFormat": "qwen-chat-template"
