@@ -35,6 +35,13 @@
   };
 
   #
+  # Mosh server - Haven connects over Mosh for roaming sessions.
+  # The UDP 60000-61000 ranges below are already open.
+  #
+
+  programs.mosh.enable = true;
+
+  #
   # Tailscale client (external access path)
   #
 

@@ -100,6 +100,30 @@
   };
 
   #
+  # Zsh behavior - mirrors the machine-local preferences in
+  # home/modules/shell.nix (imported only for linhnt): autosuggestions,
+  # syntax highlighting, and shared tuned history.
+  #
+
+   programs.zsh = {
+     enableCompletion = true;
+
+     autosuggestion.enable = true;
+     syntaxHighlighting.enable = true;
+
+     history = {
+       size = 50000;
+       save = 50000;
+       share = true;
+       ignoreDups = true;
+       ignoreAllDups = true;
+       expireDuplicatesFirst = true;
+       extended = true;
+       ignoreSpace = true;
+     };
+   };
+
+  #
   # User identity
   #
 
