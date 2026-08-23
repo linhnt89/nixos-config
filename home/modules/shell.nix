@@ -24,6 +24,10 @@
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
 
+    # One-command entry into the agent account's persistent Herdr
+    # sessions (desktop -> agent UID -> Herdr).
+    shellAliases.agents = "ssh -t agent-local herdr";
+
     history = {
       size = 50000;
       save = 50000;
