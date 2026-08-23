@@ -229,17 +229,21 @@ else
   fi
 fi
 
-# Explicit Home Manager gate: fully evaluate the user's Home Manager
-# configuration — this instantiates every imported Home Manager module,
-# including the nixdev-config desktop role modules, and forces the whole
-# user config (packages, files, scripts) through the evaluator even
-# though the toplevel build above already pulls it in transitively.
+# Explicit Home Manager gate: fully evaluate BOTH users' Home Manager
+# configurations — this instantiates every imported Home Manager module
+# (including the nixdev-config desktop role for linhnt and the firstmate
+# role + assistant modules for agent) and forces the whole user configs
+# (packages, files, scripts) through the evaluator even though the
+# toplevel build above already pulls them in transitively.
 # home.activationPackage is a materialized store path, not a derivation,
 # so this is an evaluation gate, not a second build.
 if [[ "$skip_build" == 0 ]]; then
-  echo '==> Evaluating Home Manager user config (imported desktop modules)'
+  echo '==> Evaluating Home Manager user configs (desktop + agent)'
   echo '    nix eval --raw .#nixosConfigurations.metacube.config.home-manager.users.linhnt.home.activationPackage'
   nix eval --raw .#nixosConfigurations.metacube.config.home-manager.users.linhnt.home.activationPackage
+  echo
+  echo '    nix eval --raw .#nixosConfigurations.metacube.config.home-manager.users.agent.home.activationPackage'
+  nix eval --raw .#nixosConfigurations.metacube.config.home-manager.users.agent.home.activationPackage
 fi
 
 echo

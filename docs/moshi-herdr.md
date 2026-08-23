@@ -15,8 +15,8 @@ machine. Moshi is a window into them.
 | SSH server (sshd) with key-only auth | `modules/nixos/ssh.nix` | declarative |
 | `mosh` (provides `mosh-server`) | `home/modules/moshi.nix` | declarative |
 | `tmux` (durable workspaces fallback) | `home/modules/moshi.nix` | declarative |
-| `herdr` (agent multiplexer, v0.8.0) | nixdev-config `homeManagerModules.firstmateTools` (pinned asset; enabled via `nixdev.firstmate.enableHerdr` in `home/linhnt.nix`) | declarative |
-| Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/linhnt/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
+| `herdr` (agent multiplexer, v0.8.0) | nixdev-config `homeManagerModules.firstmateTools` (pinned asset; enabled via `nixdev.firstmate.enableHerdr` in `home/agent.nix`, the dedicated `agent` account) | declarative |
+| Herdr/mosh/tmux on the non-interactive SSH PATH | NixOS `programs.zsh.enable` generates `/etc/zshenv`, which sources the system `set-environment` for every zsh invocation — so `/etc/profiles/per-user/agent/bin` is visible even to `ssh host 'command -v herdr'` | declarative (existing config, verified) |
 | Host firewall | TCP 22 + mosh UDP 60000-61000 allowed **only** from the trusted LAN IPv4 range (`192.168.1.0/24`) on `eno1`, plus all tailnet peers on `tailscale0` (the LAN source restriction applies only to `eno1`); sshd's automatic all-interface open is disabled; Tailscale UDP 41641 is opened separately for `tailscaled`; SSH/mosh stay closed on WAN/public and unused interfaces | declarative |
 | Tailscale client | `services.tailscale.enable` (daemon); `tailscale up` login is manual — no auth keys in the repo | daemon declarative, auth manual |
 | Tailscale netfilter mode | `services.tailscale.extraSetFlags` | persistently `off`, so the host firewall remains authoritative |
@@ -148,6 +148,18 @@ herdr session attach work    # named project session
 herdr session list           # running sessions
 ```
 
+`herdr` sessions run inside the dedicated restricted `agent` Unix
+account (`modules/nixos/agent-runtime.nix`) — not the personal
+desktop account. Connect with user `agent`:
+
+```bash
+ssh -t agent@metacube herdr   # or agent@<tailscale-ip> from cellular
+```
+
+The account's sshd Match block disables connection forwarding
+(`DisableForwarding yes`), so a forwarded personal ssh-agent can never
+reach the tools running there.
+
 Moshi detects Herdr on connect and shows running sessions in the
 session picker under a **Herdr** tab; tapping one attaches.
 Sessions whose server is not running are hidden — start one with
@@ -209,7 +221,9 @@ Check what Moshi's non-interactive SSH session sees:
 ssh metacube 'echo $PATH; command -v herdr; command -v tmux; command -v mosh-server'
 ```
 
-All three should print paths under `/etc/profiles/per-user/linhnt/bin`.
+All three should print paths under `/etc/profiles/per-user/<user>/bin`
+(`…/agent/bin` when connecting as the `agent` user, which owns the
+Herdr sessions).
 If `command -v herdr` prints nothing, the PATH note in
 nixdev-config's firstmateTools module (and `home/modules/moshi.nix`)
 explains why it should not.
@@ -227,13 +241,14 @@ explains why it should not.
   ```
 
   On this configuration it prints
-  `/etc/profiles/per-user/linhnt/bin/herdr`. Use that absolute
+  `/etc/profiles/per-user/agent/bin/herdr` (when connecting as the
+  `agent` user, which owns the Herdr sessions). Use that absolute
   path in the override; systemd does not perform shell command
   substitution:
 
   ```ini
   [Service]
-  Environment="MOSHI_HERDR_PATH=/etc/profiles/per-user/linhnt/bin/herdr"
+  Environment="MOSHI_HERDR_PATH=/etc/profiles/per-user/agent/bin/herdr"
   ```
 
   then `systemctl --user daemon-reload` and restart the service.

@@ -1,4 +1,4 @@
-{ pkgs, pkgsUnstable, ... }:
+{ pkgs, ... }:
 
 #
 # Local adapter for the portable development profile.
@@ -16,14 +16,10 @@
 #
 # This adapter carries ONLY MetaCube-personal desktop tooling: the gh
 # client behavior (SSH protocol, no HTTPS credential helper), the lazygit
-# UI, the Pi lane (pkgsUnstable, always owned by this repo), and the
-# user-level treehouse pool default below.
+# UI, and the user-level treehouse pool default below. The Pi lane moved
+# to the dedicated `agent` account (home/agent.nix via nixdev.assistant);
+# this desktop profile installs no agent CLIs.
 {
-
-  imports = [
-    ./pi.nix
-  ];
-
   #
   # Treehouse user-level default
   #
@@ -76,15 +72,4 @@
     # changing directory after leaving lazygit.
     enableZshIntegration = true;
   };
-
-  #
-  # AI development tools
-  #
-  # Pi moves significantly faster than the NixOS stable package set, so
-  # keep Pi on nixpkgs-unstable — the Pi lane is this repo's ownership.
-  #
-
-  home.packages = [
-    pkgsUnstable.pi-coding-agent
-  ];
 }

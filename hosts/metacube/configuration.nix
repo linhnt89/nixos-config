@@ -14,6 +14,7 @@
     # Reusable NixOS policy.
     #
 
+    ../../modules/nixos/agent-runtime.nix
     ../../modules/nixos/base.nix
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix

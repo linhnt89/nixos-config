@@ -64,27 +64,43 @@
                 pkgsUnstable =
                   nixpkgs-unstable.legacyPackages.${system};
 
-                # The pinned treehouse package the firstmateTools module
+                # The pinned treehouse package the Firstmate toolchain
                 # requires, taken from THIS flake's public package output
-                # (no treehouse flake input on the consumer side).
-                # See docs/firstmate.md in nixdev-config.
+                # (no treehouse flake input on the consumer side); the
+                # agent Home Manager profile consumes it through the same
+                # extraSpecialArgs. See docs/firstmate.md in nixdev-config.
                 treehousePkg =
                   nixdev-config.packages.${system}.treehouse;
               };
 
-              # Desktop role from the nixdev-config flake supplies
-              # the portable shell/dev layer (shell/starship/fzf/bat/eza/
-              # direnv/delta/git structure, common packages incl. Python/
-              # Node) plus `gh`, and the opt-in firstmateTools module
-              # supplies the shared Firstmate toolchain (pinned herdr for
-              # this PC's Herdr backend is enabled in home/linhnt.nix).
-              # Everything else stays local: the modules under
-              # ./home/modules are MetaCube-personal adapters.
+              # Two Home Manager users with a deliberate responsibility
+              # split:
+              #
+              # linhnt — the personal desktop account: the nixdev-config
+              # desktop role supplies the portable shell/dev layer
+              # (shell/starship/fzf/bat/eza/direnv/delta/git structure,
+              # common packages incl. Python/Node) plus `gh`; the local
+              # modules under ./home/modules are MetaCube-personal
+              # adapters. No agent runtime here.
+              #
+              # agent — the dedicated restricted AI-agent account (see
+              # modules/nixos/agent-runtime.nix): the nixdev-config
+              # firstmate role profile supplies the portable shell/git/
+              # dev structure plus the shared Firstmate toolchain, and
+              # the opt-in assistant module enables Pi (configured in
+              # home/agent.nix).
               home-manager.users.linhnt = {
                 imports = [
                   nixdev-config.homeManagerModules.desktop
-                  nixdev-config.homeManagerModules.firstmateTools
                   ./home/linhnt.nix
+                ];
+              };
+
+              home-manager.users.agent = {
+                imports = [
+                  nixdev-config.homeManagerModules.firstmate
+                  nixdev-config.homeManagerModules.assistant
+                  ./home/agent.nix
                 ];
               };
             }

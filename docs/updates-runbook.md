@@ -313,7 +313,7 @@ no-mistakes doctor                       # daemon + gate validation
 no-mistakes --version                    # vs firstmate NO_MISTAKES_MIN (fm-bootstrap.sh)
 gh-axi --version && chrome-devtools-axi --version
 lavish-axi --version && tasks-axi --version && quota-axi --version
-herdr --version && treehouse --version && pi --version
+herdr --version && treehouse --version && pi --version   # run as the agent account (ssh -t agent@localhost): the desktop user has none of these
 ```
 
 `no-mistakes --version` may print its own update banner; the Nix

@@ -29,7 +29,11 @@ let
   home-manager = f.inputs.home-manager;
 
   on = f.nixosConfigurations.metacube;
-  hm = on.config.home-manager.users.linhnt;
+  # The Firstmate toolchain + Herdr + FM Dependabot sweep live on the
+  # dedicated restricted `agent` account (modules/nixos/agent-runtime.nix,
+  # home/agent.nix), never on the personal desktop account.
+  hm = on.config.home-manager.users.agent;
+  linhntHm = on.config.home-manager.users.linhnt;
 
   lock = builtins.fromJSON (builtins.readFile ../flake.lock);
   rootInputs = lock.nodes.root.inputs;
@@ -57,15 +61,24 @@ let
     && !(nixpkgs.lib.hasInfix "herdr.url" flakeNix)
     && !(nixpkgs.lib.hasInfix "noMistakes" flakeNix);
 
-  flakeNixConsumesFirstmateTools =
-    nixpkgs.lib.hasInfix "nixdev-config.homeManagerModules.firstmateTools" flakeNix
+  flakeNixConsumesFirstmateTooling =
+    nixpkgs.lib.hasInfix "nixdev-config.homeManagerModules.firstmate" flakeNix
     && nixpkgs.lib.hasInfix "treehousePkg" flakeNix;
 
   hasPackage =
-    prefix:
+    pkgs: prefix:
     builtins.any
       (p: builtins.match "${prefix}.*" (p.name or "") != null)
-      hm.home.packages;
+      pkgs.home.packages;
+
+  desktopHasNoAgentTooling =
+    !(hasPackage linhntHm "treehouse")
+    && !(hasPackage linhntHm "no-mistakes")
+    && !(hasPackage linhntHm "herdr")
+    && !(hasPackage linhntHm "pi-coding-agent")
+    && linhntHm.nixdev.firstmate.enableHerdr or false == false
+    && linhntHm.metacube.firstmate.fmDependabotSweep.enable
+      or false == false;
 
   localModulesGone =
     !(builtins.pathExists ../home/modules/treehouse.nix)
@@ -169,11 +182,13 @@ let
     "lock: nixdev-config is pinned" = nixdevConfigPinned;
     "lock: pinned nixdev-config provides firstmateTools + treehouse output" = nixdevConfigProvidesInterface;
     "flake.nix: declares no toolchain inputs" = flakeNixDeclaresNoToolchainInputs;
-    "flake.nix: consumes firstmateTools with treehousePkg" = flakeNixConsumesFirstmateTools;
-    "user config: treehouse package present (from nixdev-config)" = hasPackage "treehouse";
-    "user config: no-mistakes package present" = hasPackage "no-mistakes";
-    "user config: herdr package present (enableHerdr)" = hasPackage "herdr";
-    "user config: herdr backend enabled for MetaCube" = herdrEnabledForMetaCube;
+    "flake.nix: consumes the firstmate role profile with treehousePkg" = flakeNixConsumesFirstmateTooling;
+    "user config (agent): treehouse package present (from nixdev-config)" = hasPackage hm "treehouse";
+    "user config (agent): no-mistakes package present" = hasPackage hm "no-mistakes";
+    "user config (agent): herdr package present (enableHerdr)" = hasPackage hm "herdr";
+    "user config (agent): Pi assistant package present" = hasPackage hm "pi-coding-agent";
+    "user config (agent): herdr backend enabled for MetaCube" = herdrEnabledForMetaCube;
+    "desktop account carries no agent runtime tooling" = desktopHasNoAgentTooling;
     "local toolchain modules and node-tools removed" = localModulesGone && devNixNoToolchainImports;
     "no local update-no-mistakes.sh left over" = noMistakesUpdaterGone;
     "repo treehouse.toml capacity policy still consumer-owned (max_trees = 8)" = treehousePolicyConsumerOwned;
